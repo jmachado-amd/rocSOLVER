@@ -463,9 +463,11 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
         }
         else
         {
+            auto num_eigs = hNev[b][0];
+
             // both eigenvalues and eigenvectors needed; need to implicitly test
             // eigenvectors due to non-uniqueness of eigenvectors under scaling
-            if(hInfo[b][0] == 0)
+            if((hInfo[b][0] == 0) && (num_eigs > 0))
             {
                 T alpha = 1;
                 T beta = 0;
@@ -519,7 +521,6 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
 
                 ss << "%% Reference eigenvalues and eigenvectors (computed by LAPACK)\n";
                 // Get lapack eigenvalues
-                auto num_eigs = hNev[b][0];
                 auto eigs_ref = *hMat::Convert(hW[b], 1, num_eigs);
                 eigs_ref.print("eigs_ref", ss);
  
@@ -638,9 +639,9 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 bool success = err/(2 * n * get_epsilon<S>()) <= S(1.) ? true : false;
                 if (success == true)
                 {
-                    std::string filename = fprefix + test_case + "batch_" + std::to_string(b) + "_success" + fsuffix;
-                    auto out = std::ofstream(filename, std::ofstream::out);
-                    out << ss.str();
+                    /* std::string filename = fprefix + test_case + "batch_" + std::to_string(b) + "_success" + fsuffix; */
+                    /* auto out = std::ofstream(filename, std::ofstream::out); */
+                    /* out << ss.str(); */
                 }
                 else
                 {
