@@ -32,6 +32,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <iostream>
+#include <iomanip>
 #include <memory>
 #include <new>
 #include <type_traits>
@@ -794,6 +795,32 @@ public:
                     std::cout << "\n" << std::flush;
             }
         }
+    }
+
+    void print(std::string matrix_name, std::stringstream& ss)
+    {
+        if (matrix_name.empty())
+        {
+            matrix_name = "_";
+        }
+        ss << matrix_name << " = [\n";
+
+        const auto default_precision{std::cout.precision()};
+        const auto digits = std::numeric_limits<T>::max_digits10;
+        ss << std::setprecision(digits);
+        for(I i = 0; i < nrows_; ++i)
+        {
+            ss << "    ";
+            for(I j = 0; j < ncols_; ++j)
+            {
+                ss << this->operator()(i, j);
+                if(j != ncols_ - 1)
+                    ss << ", ";
+            }
+            ss << "\n";
+        }
+        ss << std::setprecision(default_precision);
+        ss << "];" << std::endl << std::flush;
     }
 
 protected:

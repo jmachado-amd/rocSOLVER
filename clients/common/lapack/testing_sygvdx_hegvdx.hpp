@@ -27,6 +27,10 @@
 
 #pragma once
 
+#include <ctime>
+#include <fstream>
+
+#include "common/matrix_utils/matrix_utils.hpp"
 #include "common/misc/client_util.hpp"
 #include "common/misc/clientcommon.hpp"
 #include "common/misc/lapack_host_reference.hpp"
@@ -378,6 +382,8 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                             double* max_err,
                             const bool singular)
 {
+    using hMat = HostMatrix<T, rocblas_int>;
+    using BDesc = typename hMat::BlockDescriptor;
     constexpr bool COMPLEX = rocblas_is_complex<T>;
 
     int lwork = (COMPLEX ? 2 * n : 8 * n);
@@ -464,38 +470,163 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 T alpha = 1;
                 T beta = 0;
 
+                //
+                // Save test data
+                //
+                std::string fprefix = "sygvdx_";
+                std::string test_case{};
+                std::string fsuffix = "_" + std::to_string((int)time(NULL)) + ".m";
+                std::stringstream ss;
+                ss << "%% sygvdx\n\n";
+
+                // Create a thin wrapper of input matrices A, B (bc * ld[a, b] * n); of size ld[a, b] * n, and starting at b * ld[a, b] * n
+                auto AWrap_b = hMat::Wrap(A[b], lda, n);
+                auto BWrap_b = hMat::Wrap(B[b], ldb, n);
+
+                /* if(itype == rocblas_eform_ax) */
+                /* { */
+                /*     // problem is A*x = (lambda)*B*x */
+                /*     Awrap_b = hMat::Wrap(A[b], lda, n); */
+                /*     BWrap_b = hMat::Wrap(B[b], ldb, n); */
+                /* } */
+                if(itype == rocblas_eform_bax)
+                {
+                    // problem is B*A*x = (lambda)*x
+                    // the `*initData(...)` method has swapped A and B
+                    AWrap_b = hMat::Wrap(B[b], ldb, n);
+                    BWrap_b = hMat::Wrap(A[b], lda, n);
+                }
+                /* else */
+                /* { */
+                /*     // problem is A*B*x = (lambda)*x */
+                /*     Awrap_b = hMat::Wrap(A[b], lda, n); */
+                /*     BWrap_b = hMat::Wrap(B[b], ldb, n); */
+                /* } */
+
+                ss << "%% Input matrices\n";
+                // Since `lda`, `ldz` and `n` can differ, we must extract submatrices of the correct size from
+                // `A`, `hZRes` and `hWRes`.
+                //
+                // We want the sub-block starting from row 0, col 0 and with size n x n of A
+                auto block_AB = BDesc().from_row(0).from_col(0).nrows(n).ncols(
+                        n); // the `from_row(0)` and `from_col(0)` calls can be omitted
+                auto A_b = (*AWrap_b).block(block_AB);
+                A_b.print("A", ss);
+
+                auto B_b = (*BWrap_b).block(block_AB);
+                B_b.print("B", ss);
+                ss << std::endl;
+
+                ss << "%% Reference eigenvalues and eigenvectors (computed by LAPACK)\n";
+                // Get lapack eigenvalues
+                auto num_eigs = hNev[b][0];
+                auto eigs_ref = *hMat::Convert(hW[b], 1, num_eigs);
+                eigs_ref.print("eigs_ref", ss);
+ 
+                // Get lapack eigenvectors
+                auto V_ref = (*hMat::Wrap(hZ[b], ldz, n)).block(BDesc().nrows(n).ncols(num_eigs));
+                V_ref.print("V_ref", ss);
+                ss << std::endl;
+
+                ss << "%% Comptued eigenvalues and eigenvectors\n";
+                // Get computed eigenvalues
+                auto eigs_b = *hMat::Convert(
+                        hWRes[b], 1, num_eigs); // convert eigenvalues from type S to type T, if required
+                eigs_b.print("eigs", ss);
+
+                // Get computed eigenvectors
+                auto V_b = (*hMat::Wrap(hZRes[b], ldz, n)).block(BDesc().nrows(n).ncols(num_eigs));
+                V_b.print("V", ss);
+                ss << std::endl;
+
                 // hZRes contains eigenvectors x
                 // compute B*x (or A*x) and store in hB
                 cpu_symm_hemm(rocblas_side_left, uplo, n, hNev[b][0], alpha, B[b], ldb, hZRes[b],
-                              ldz, beta, hB[b], ldb);
+                        ldz, beta, hB[b], ldb);
+
+                ss << "%% Test constants:\n";
+                const auto default_precision{std::cout.precision()};
+                const auto digits = std::numeric_limits<T>::max_digits10;
+                ss << std::setprecision(digits);
+                ss << "ulp = " << get_epsilon<S>() << ";\n";
+                ss << std::setprecision(default_precision);
+                ss << "n = size(A, 1);\n\n";
 
                 if(itype == rocblas_eform_ax)
                 {
                     // problem is A*x = (lambda)*B*x
+                    test_case = "ax_lbx_";
+                    ss <<"%% Case BAx = lambda x\n\n";
+                    ss <<"eta = norm(V' * B * V - eye(n));\n\n";
+
+                    ss <<"% Orthogonality error (<= 3 to pass current test):\n";
+                    ss <<"ortho_err = eta/(n * ulp)\n\n";
+
+                    ss <<"rel_eig_err = max(abs((eigs_ref - eigs)))/(n * ulp * max(abs(eigs_ref)))\n\n";
+
+                    ss <<"% Relative accuracy error (<= 3 to pass current test):\n";
+                    ss <<"rel_acc_err = norm(V' * A * V - diag(eigs))/(n * eta * max(abs(eigs)))\n";
 
                     // compute (1/lambda)*A*x and store in hA
                     for(int j = 0; j < hNev[b][0]; j++)
                     {
                         alpha = T(1) / hWRes[b][j];
                         cpu_symv_hemv(uplo, n, alpha, A[b], lda, hZRes[b] + j * ldz, 1, beta,
-                                      hA[b] + j * lda, 1);
+                                hA[b] + j * lda, 1);
                     }
 
                     // move B*x into hZRes
                     for(rocblas_int i = 0; i < n; i++)
                         for(rocblas_int j = 0; j < hNev[b][0]; j++)
                             hZRes[b][i + j * ldz] = hB[b][i + j * ldb];
+
                 }
-                else
+                else if(itype == rocblas_eform_bax)
                 {
-                    // problem is A*B*x = (lambda)*x or B*A*x = (lambda)*x
+                    // problem is B*A*x = (lambda)*x
+                    test_case = "bax_lx_";
+                    ss <<"%% Case BAx = lambda x\n\n";
+                    ss <<"eta = norm(V' * inv(B) * V - eye(n));\n\n";
+
+                    ss <<"% Orthogonality error (<= 3 to pass current test):\n";
+                    ss <<"ortho_err = eta/(n * ulp)\n\n";
+
+                    ss <<"% Relative eigenvalues error (<= 3 to pass current test):\n";
+                    ss <<"rel_eig_err = max(abs((eigs_ref - eigs)))/(n * ulp * max(abs(eigs_ref)))\n\n";
+
+                    ss <<"% Relative accuracy error (<= 3 to pass current test):\n";
+                    ss <<"rel_acc_err = norm(V' * A * V - diag(eigs))/(n * eta * max(abs(eigs)))\n";
 
                     // compute (1/lambda)*A*B*x or (1/lambda)*B*A*x and store in hA
                     for(int j = 0; j < hNev[b][0]; j++)
                     {
                         alpha = T(1) / hWRes[b][j];
                         cpu_symv_hemv(uplo, n, alpha, A[b], lda, hB[b] + j * ldb, 1, beta,
-                                      hA[b] + j * lda, 1);
+                                hA[b] + j * lda, 1);
+                    }
+                }
+                else
+                {
+                    // problem is A*B*x = (lambda)*x
+                    test_case = "abx_lx_";
+                    ss <<"%% Case ABx = lambda x\n\n";
+                    ss <<"eta = norm(V' * B * V - eye(n);\n\n";
+
+                    ss <<"% Orthogonality error (<= 3 to pass current test):\n";
+                    ss <<"ortho_err = eta/(n * ulp)\n\n";
+
+                    ss <<"% Relative eigenvalues error (<= 3 to pass current test):\n";
+                    ss <<"rel_eig_err = max(abs((eigs_ref - eigs)))/(n * ulp * max(abs(eigs_ref)))\n\n";
+
+                    ss <<"% Relative accuracy error (<= 3 to pass current test):\n";
+                    ss <<"rel_acc_err = norm(V' * A * V - diag(eigs))/(n * eta * max(abs(eigs)))\n";
+
+                    // compute (1/lambda)*A*B*x or (1/lambda)*B*A*x and store in hA
+                    for(int j = 0; j < hNev[b][0]; j++)
+                    {
+                        alpha = T(1) / hWRes[b][j];
+                        cpu_symv_hemv(uplo, n, alpha, A[b], lda, hB[b] + j * ldb, 1, beta,
+                                hA[b] + j * lda, 1);
                     }
                 }
 
@@ -503,6 +634,20 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 // using frobenius norm
                 err = norm_error('F', n, hNev[b][0], lda, hA[b], hZRes[b], ldz);
                 *max_err = err > *max_err ? err : *max_err;
+
+                bool success = err/(2 * n * get_epsilon<S>()) <= S(1.) ? true : false;
+                if (success == true)
+                {
+                    std::string filename = fprefix + test_case + "batch_" + std::to_string(b) + "_success" + fsuffix;
+                    auto out = std::ofstream(filename, std::ofstream::out);
+                    out << ss.str();
+                }
+                else
+                {
+                    std::string filename = fprefix + test_case + "batch_" + std::to_string(b) + "_failure" + fsuffix;
+                    auto out = std::ofstream(filename, std::ofstream::out);
+                    out << ss.str();
+                }
             }
         }
     }
