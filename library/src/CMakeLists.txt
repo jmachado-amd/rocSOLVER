@@ -231,6 +231,8 @@ set(rocsolver_auxiliary_source
   auxiliary/rocauxiliary_larf.cpp
   auxiliary/rocauxiliary_larft.cpp
   auxiliary/rocauxiliary_larfb.cpp
+  # plane rotations
+  auxiliary/rocauxiliary_lasr.cpp
   # orthonormal/unitary matrices
   auxiliary/rocauxiliary_org2r_ung2r.cpp
   auxiliary/rocauxiliary_orgqr_ungqr.cpp
@@ -343,6 +345,7 @@ endif()
 
 set(auxiliaries
   common/buildinfo.cpp
+  common/rocsolver_handle.cpp
   common/rocsolver_logger.cpp
   common/rocsparse.cpp
 )
@@ -405,6 +408,10 @@ if(CMAKE_CXX_COMPILER MATCHES ".*clang\\+\\+.*")
   )
 endif()
 
+if(BUILD_OFFLOAD_COMPRESS)
+  target_compile_options(rocsolver PRIVATE "--offload-compress")
+endif()
+
 target_include_directories(rocsolver
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/library/include>
@@ -436,13 +443,18 @@ if (BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
   )
 endif( )
 
-# Following Boost conventions of prefixing 'lib' on static built libraries, across all platforms
 if(NOT BUILD_SHARED_LIBS)
+  # Following Boost conventions of prefixing 'lib' on static built libraries, across all platforms
   set_target_properties(rocsolver PROPERTIES PREFIX "lib")
+  target_compile_definitions(rocsolver PRIVATE ROCSOLVER_STATIC_LIB)
 endif()
 
 if(OPTIMAL)
   target_compile_definitions(rocsolver PRIVATE OPTIMAL)
+endif()
+
+if(ROCSOLVER_USE_INTERNAL_BLAS)
+  target_compile_definitions(rocsolver PRIVATE USE_INTERNAL_GEMM USE_INTERNAL_TRSM)
 endif()
 
 target_compile_definitions(rocsolver PRIVATE
