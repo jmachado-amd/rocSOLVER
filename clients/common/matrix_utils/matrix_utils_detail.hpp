@@ -191,6 +191,47 @@ namespace detail
         return (info == 0);
     }
 
+    /* template <typename T, typename W> */
+    /* void cpu_gesvd(rocblas_svect leftv, */
+    /*                rocblas_svect rightv, */
+    /*                rocblas_int m, */
+    /*                rocblas_int n, */
+    /*                T* A, */
+    /*                rocblas_int lda, */
+    /*                W* S, */
+    /*                T* U, */
+    /*                rocblas_int ldu, */
+    /*                T* V, */
+    /*                rocblas_int ldv, */
+    /*                T* work, */
+    /*                rocblas_int lwork, */
+    /*                W* rwork, */
+    /*                rocblas_int* info); */
+
+    // Compute singular values and singular vectors of A with lapack_*gesvd
+    template <typename T, typename S>
+    bool lapack_ge_svd(T const* A, const int nrows, const int ncols, T* U, S* D, T* V)
+    {
+        if(A == nullptr || nrows < 1 || ncols < 1)
+        {
+            return false;
+        }
+
+        int info;
+        int worksize = 32 * std::max(1, 2 * std::min(nrows, ncols) + std::max(nrows, ncols));
+        std::vector<T> work(worksize, T(0.));
+        int worksize_real = 5 * std::min(nrows, ncols);
+        std::vector<S> work_real(worksize_real, S(0.));
+        T* Acpy;
+        Acpy = (T*)malloc(sizeof(T) * nrows * ncols);
+        memcpy(Acpy, A, sizeof(T) * nrows * ncols);
+        cpu_gesvd(rocblas_svect_all, rocblas_svect_all, nrows, ncols, Acpy, nrows, D, U, nrows, V,
+                  ncols, work.data(), worksize, work_real.data(), &info);
+        free(Acpy);
+
+        return (info == 0);
+    }
+
 } // namespace detail
 
 } // namespace matxu
