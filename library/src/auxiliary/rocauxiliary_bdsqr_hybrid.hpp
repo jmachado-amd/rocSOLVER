@@ -160,12 +160,10 @@ static void bdsqr_single_template(rocblas_handle handle,
     };
 
     auto d = [=](auto i) -> S& {
-        assert((1 <= i) && (i <= n));
         return (d_[i - 1]);
     };
 
     auto e = [=](auto i) -> S& {
-        assert((1 <= i) && (i <= (n - 1)));
         return (e_[i - 1]);
     };
 
@@ -174,20 +172,14 @@ static void bdsqr_single_template(rocblas_handle handle,
     auto dwork = [=](auto i) -> S& { return (dwork_[i - 1]); };
 
     auto c = [=](auto i, auto j) -> T& {
-        assert((1 <= i) && (i <= nrc) && (nrc <= ldc));
-        assert((1 <= j) && (j <= ncc));
         return (c_[idx2D(i - 1, j - 1, ldc)]);
     };
 
     auto u = [=](auto i, auto j) -> T& {
-        assert((1 <= i) && (i <= nru) && (nru <= ldu));
-        assert((1 <= j) && (j <= ncu));
         return (u_[idx2D(i - 1, j - 1, ldu)]);
     };
 
     auto vt = [=](auto i, auto j) -> T& {
-        assert((1 <= i) && (i <= nrvt) && (nrvt <= ldvt));
-        assert((1 <= j) && (j <= ncvt));
         return (vt_[idx2D(i - 1, j - 1, ldvt)]);
     };
 
