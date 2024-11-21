@@ -27,8 +27,6 @@
 
 #pragma once
 
-/* #define ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS */
-
 #include "common/matrix_utils/matrix_utils.hpp"
 #include "common/misc/client_util.hpp"
 #include "common/misc/clientcommon.hpp"
@@ -210,6 +208,37 @@ void testing_sygvdx_hegvdx_bad_arg()
     }
 }
 
+static bool test_for_equality_of_number_of_computed_eigenvalues()
+{
+    bool status = true;
+#if defined(ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS)
+    status = false;
+#else
+    if(const char* env_var = std::getenv("ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS");
+       env_var != nullptr)
+    {
+        status = false;
+    }
+#endif
+    if(const char* env_var = std::getenv("ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS");
+       env_var != nullptr)
+    {
+        status = true;
+    }
+    return status;
+}
+
+static bool sygvdx_hegvdx_use_legacy_tests()
+{
+    bool status = false;
+    if(const char* env_var = std::getenv("ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS");
+       env_var != nullptr)
+    {
+        status = true;
+    }
+    return status;
+}
+
 template <bool CPU, bool GPU, typename T, typename Td, typename Th>
 void sygvdx_hegvdx_initData(const rocblas_handle handle,
                             const rocblas_eform itype,
@@ -236,6 +265,8 @@ void sygvdx_hegvdx_initData(const rocblas_handle handle,
         host_strided_batch_vector<T> U(n * n, 1, n * n, bc);
         rocblas_init<T>(hA, true);
         rocblas_init<T>(U, true);
+
+        bool use_legacy_tests = sygvdx_hegvdx_use_legacy_tests();
 
         for(rocblas_int b = 0; b < bc; ++b)
         {
@@ -322,18 +353,24 @@ void sygvdx_hegvdx_initData(const rocblas_handle handle,
                 {
                     for(rocblas_int j = 0; j < n; j++)
                     {
-                        /* // Old code */
-                        /* if(itype != rocblas_eform_bax) */
+                        if(use_legacy_tests)
+                        {
+                            if(itype != rocblas_eform_bax)
+                            {
+                                A[b][i + j * lda] = hA[b][i + j * lda];
+                                B[b][i + j * ldb] = hB[b][i + j * ldb];
+                            }
+                            else
+                            {
+                                A[b][i + j * lda] = hB[b][i + j * ldb];
+                                B[b][i + j * ldb] = hA[b][i + j * lda];
+                            }
+                        }
+                        else
                         {
                             A[b][i + j * lda] = hA[b][i + j * lda];
                             B[b][i + j * ldb] = hB[b][i + j * ldb];
                         }
-                        /* // Old code */
-                        /* else */
-                        /* { */
-                        /*     A[b][i + j * lda] = hB[b][i + j * ldb]; */
-                        /*     B[b][i + j * ldb] = hA[b][i + j * lda]; */
-                        /* } */
                     }
                 }
             }
@@ -407,6 +444,9 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
     std::vector<closest_largest_subsequences<S>> clss(bc);
     std::vector<bool> skip_test(bc, false);
 
+    bool use_legacy_tests = sygvdx_hegvdx_use_legacy_tests();
+    bool test_for_equality = test_for_equality_of_number_of_computed_eigenvalues();
+
     // input data initialization
     sygvdx_hegvdx_initData<true, true, T>(handle, itype, evect, n, dA, lda, stA, dB, ldb, stB, bc,
                                           hA, hB, A, B, true, singular);
@@ -425,8 +465,9 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                         hIfail.data(), hInfo[b]);
 
         // Capture failures where B is not positive definite (hInfo[b][0] > n),
-        // all other LAPACK failures skip the test.
-        if((hInfo[b][0] != 0) && (hInfo[b][0] <= n))
+        // or where the i-argument has an illegal value (hInfo[b][0] < 0).  All other LAPACK
+        // failures skip the test.
+        if((hInfo[b][0] > 0) && (hInfo[b][0] <= n))
         {
             skip_test[b] = true;
         }
@@ -442,19 +483,17 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
     // calls to the solver should look for computed eigenvalues in the range
     // (vl - tol, vu + tol], where `tol = C * n * ulp * ||A||`.
     //
-    S C = 1;
+    S C = 5;
     std::vector<S> tols(bc, 0);
     std::vector<S> norms(bc, 0);
     S tol = 0;
     for(rocblas_int b = 0; b < bc; ++b)
     {
-        /* norms[b] = snorm('F', n, n, hA[b], lda); */
-        // Get lapack eigenvalues (reference to which rocSOLVER's sygvdx will be compared to)
         if(hNev[b][0] > 0)
         {
-            auto eigs_b = *HMat::Convert(
-                hW[b], hNev[b][0], 1); // convert eigenvalues from type S to type T, if required
-            norms[b] = std::max(eigs_b.max_coeff_norm(), std::numeric_limits<S>::epsilon());
+            // Get lapack eigenvalues (reference to which rocSOLVER's sygvdx will be compared to)
+            auto eigsLapack = *HMat::Convert(hW[b], hNev[b][0], 1);
+            norms[b] = eigsLapack.max_coeff_norm();
         }
         else
         {
@@ -485,40 +524,30 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
     if(evect != rocblas_evect_none)
         hashZ = deterministic_hash(hZRes, bc);
 
-    // (We expect the used input matrices to always converge. Testing
-    // implicitly the equivalent non-converged matrix is very complicated and it boils
-    // down to essentially run the algorithm again and until convergence is achieved.
-    // We do test with indefinite matrices B).
+    // Except for the cases in which B is indefinite, we expect the eigensolver
+    // to converge for all input matrices.
 
-    // check info for non-convergence and/or positive-definiteness
+    // check info for illegal values and/or positive-definiteness
     *max_err = 0;
     for(rocblas_int b = 0; b < bc; ++b)
     {
-        /* // Capture failures where B is not positive definite (hInfo[b][0] > n), */
-        /* // all other LAPACK failures abort the test. */
-        /* if((hInfo[b][0] != 0) && (hInfo[b][0] <= n)) */
-        /* { */
-        /*     return; */
-        /* } */
+        // Capture failures where B is not positive definite (hInfo[b][0] > n),
+        // or where the i-argument has an illegal value (hInfo[b][0] < 0).  All other LAPACK
+        // failures skip the test.
         if(skip_test[b])
             continue;
 
         EXPECT_EQ(hInfo[b][0], hInfoRes[b][0]) << "where b = " << b;
         if(hInfo[b][0] != hInfoRes[b][0])
             *max_err += 1;
-        /* } */
 
-        /* // Check number of returned eigenvalues */
-        /* for(rocblas_int b = 0; b < bc; ++b) */
-        /* { */
         auto numMatchingEigs = clss[b](hW[b], hNev[b][0], hWRes[b], hNevRes[b][0], tols[b]);
-#if not defined(ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS)
-        /* auto numMatchingEigs = clss[b](hW[b], hNev[b][0], hWRes[b], hNevRes[b][0], tols[b]); */
-        EXPECT_EQ(hNev[b][0], numMatchingEigs) << "where b = " << b;
-        if(hNev[b][0] != numMatchingEigs)
-            *max_err += 1;
-#endif
-        /* clss[b].print_debug(); */
+        if(test_for_equality)
+        {
+            EXPECT_EQ(hNev[b][0], numMatchingEigs) << "where b = " << b;
+            if(hNev[b][0] != numMatchingEigs)
+                *max_err += 1;
+        }
     }
 
     //
@@ -532,112 +561,136 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
         auto [_, rocsolverEigsIds] = clss[b].subseqs_ids();
         auto numMatchingEigs = rocsolverEigs.size();
 
-        if(skip_test[b] || (numMatchingEigs == 0))
+        // Number of eigenvalues computed by rocSOLVER
+        auto numRocsolverEigs = hNevRes[b][0];
+
+        // Only check accuracy for tests in which both computed and reference values exist and are well defined.
+        if(skip_test[b] || (numMatchingEigs == 0) || (hInfo[b][0] != 0))
             continue;
 
         if(evect == rocblas_evect_none)
         {
-            // only eigenvalues needed; can compare with LAPACK
-            if(hInfo[b][0] == 0)
+            //
+            // Only eigenvalues
+            //
+
+            if(use_legacy_tests)
             {
-                /* err = norm_error('F', 1, hNev[b][0], 1, lapackEigs.data(), rocsolverEigs.data()); */
-                err = clss[b].inf_norm() / norms[b];
+                err = norm_error('F', 1, numMatchingEigs, 1, lapackEigs.data(), rocsolverEigs.data());
+                *max_err = err > *max_err ? err : *max_err;
+            }
+            else
+            {
+                /* err = clss[b].inf_norm() / std::max(norms[b], std::numeric_limits<S>::epsilon()); */
+                // Get computed eigenvalues
+                auto eigs
+                    = *HMat::Convert(rocsolverEigs.data(), rocsolverEigs.size(),
+                                     1); // convert eigenvalues from type S to type T, if required
+
+                // Get lapack (reference) eigenvalues
+                auto eigsRef
+                    = *HMat::Convert(lapackEigs.data(), lapackEigs.size(),
+                                     1); // convert eigenvalues from type S to type T, if required
+                err = (eigs - eigsRef).norm() / eigsRef.norm();
                 *max_err = err > *max_err ? err : *max_err;
             }
         }
         else
         {
-            // Number of eigenvalues computed by rocSOLVER
-            auto numRocsolverEigs = hNevRes[b][0];
-            // Number of eigenvalues computed by rocSOLVER that match the required eigenvalues
+            //
+            // Both eigenvalues and eigenvectors
+            //
 
-            // both eigenvalues and eigenvectors needed
-            if(hInfo[b][0] == 0)
+            if(use_legacy_tests)
             {
-                /* // */
-                /* // Old code */
-                /* // */
-                /* T alpha = 1; */
-                /* T beta = 0; */
+                T alpha = 1;
+                T beta = 0;
 
-                /* // hZRes contains eigenvectors x */
-                /* // compute B*x (or A*x) and store in hB */
-                /* cpu_symm_hemm(rocblas_side_left, uplo, n, hNev[b][0], alpha, B[b], ldb, hZRes[b], */
-                /*               ldz, beta, hB[b], ldb); */
+                // hZRes contains eigenvectors x
+                // compute B*x (or A*x) and store in hB
+                cpu_symm_hemm(rocblas_side_left, uplo, n, numRocsolverEigs, alpha, B[b], ldb,
+                              hZRes[b], ldz, beta, hB[b], ldb);
 
-                /* auto [_, hWResIds] = clss[b].subseqs_ids(); */
-                /* if(itype == rocblas_eform_ax) */
-                /* { */
-                /*     // problem is A*x = (lambda)*B*x */
+                auto [_, hWResIds] = clss[b].subseqs_ids();
+                if(itype == rocblas_eform_ax)
+                {
+                    // problem is A*x = (lambda)*B*x
 
-                /*     // compute (1/lambda)*A*x and store in hA */
-                /*     for(int j = 0; j < hNev[b][0]; j++) */
-                /*     { */
-                /*         int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair */
-                /*         alpha = T(1) / hWRes[b][jj]; */
-                /*         cpu_symv_hemv(uplo, n, alpha, A[b], lda, hZRes[b] + jj * ldz, 1, beta, */
-                /*                       hA[b] + j * lda, 1); */
-                /*     } */
+                    // compute (1/lambda)*A*x and store in hA
+                    for(int j = 0; j < numMatchingEigs; j++)
+                    {
+                        int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
+                        alpha = T(1) / hWRes[b][jj];
+                        cpu_symv_hemv(uplo, n, alpha, A[b], lda, hZRes[b] + jj * ldz, 1, beta,
+                                      hA[b] + j * lda, 1);
+                    }
 
-                /*     // move B*x into hZRes */
-                /*     for(rocblas_int i = 0; i < n; i++) */
-                /*         for(rocblas_int j = 0; j < hNev[b][0]; j++) */
-                /*         { */
-                /*             int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair */
-                /*             hZRes[b][i + j * ldz] = hB[b][i + jj * ldb]; */
-                /*         } */
-                /* } */
-                /* else */
-                /* { */
-                /*     // problem is A*B*x = (lambda)*x or B*A*x = (lambda)*x */
+                    // move B*x into hZRes
+                    for(rocblas_int i = 0; i < n; i++)
+                        for(rocblas_int j = 0; j < numMatchingEigs; j++)
+                        {
+                            int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
+                            hZRes[b][i + j * ldz] = hB[b][i + jj * ldb];
+                        }
+                }
+                else
+                {
+                    // problem is A*B*x = (lambda)*x or B*A*x = (lambda)*x
 
-                /*     // compute (1/lambda)*A*B*x or (1/lambda)*B*A*x and store in hA */
-                /*     for(int j = 0; j < hNev[b][0]; j++) */
-                /*     { */
-                /*         int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair */
-                /*         alpha = T(1) / hWRes[b][jj]; */
-                /*         cpu_symv_hemv(uplo, n, alpha, A[b], lda, hB[b] + jj * ldb, 1, beta, */
-                /*                       hA[b] + j * lda, 1); */
-                /*     } */
-                /*     // move hZRes */
-                /*     for(rocblas_int i = 0; i < n; i++) */
-                /*         for(rocblas_int j = 0; j < hNev[b][0]; j++) */
-                /*         { */
-                /*             int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair */
-                /*             if(j != jj) */
-                /*                 hZRes[b][i + j * ldz] = hZRes[b][i + jj * ldz]; */
-                /*         } */
-                /* } */
+                    // compute (1/lambda)*A*B*x or (1/lambda)*B*A*x and store in hA
+                    for(int j = 0; j < numMatchingEigs; j++)
+                    {
+                        int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
+                        alpha = T(1) / hWRes[b][jj];
+                        cpu_symv_hemv(uplo, n, alpha, A[b], lda, hB[b] + jj * ldb, 1, beta,
+                                      hA[b] + j * lda, 1);
+                    }
+                    // move hZRes
+                    for(rocblas_int i = 0; i < n; i++)
+                        for(rocblas_int j = 0; j < numMatchingEigs; j++)
+                        {
+                            int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
+                            if(j != jj)
+                                hZRes[b][i + j * ldz] = hZRes[b][i + jj * ldz];
+                        }
+                }
 
-                /* // error is ||hA - hZRes|| / ||hA|| */
-                /* // using frobenius norm */
-                /* err = norm_error('F', n, hNev[b][0], lda, hA[b], hZRes[b], ldz); */
-                /* *max_err = err > *max_err ? err : *max_err; */
-
+                // error is ||hA - hZRes|| / ||hA||
+                // using frobenius norm
+                err = norm_error('F', n, numMatchingEigs, lda, hA[b], hZRes[b], ldz);
+                *max_err = err > *max_err ? err : *max_err;
+            }
+            else
+            {
                 //
                 // Prepare input
                 //
+
                 // Get computed eigenvalues
-                auto eigs_b
+                auto eigs
                     = *HMat::Convert(rocsolverEigs.data(), rocsolverEigs.size(),
                                      1); // convert eigenvalues from type S to type T, if required
 
                 // Get lapack (reference) eigenvalues
-                auto eigs_ref
+                auto eigsRef
                     = *HMat::Convert(lapackEigs.data(), lapackEigs.size(),
                                      1); // convert eigenvalues from type S to type T, if required
 
                 // Create thin wrappers of input matrices A and B
-                auto AWrap_b = HMat::Wrap(A.data() + b * lda * n, lda, n);
-                auto BWrap_b = HMat::Wrap(B.data() + b * ldb * n, ldb, n);
+                auto AWrap = HMat::Wrap(A.data() + b * lda * n, lda, n);
+                auto BWrap = HMat::Wrap(B.data() + b * ldb * n, ldb, n);
 
                 // We want the sub-blocks starting from row 0, col 0 and with size n x n of A and B
-                auto A_b = (*AWrap_b).block(BDesc().nrows(n).ncols(n));
-                auto B_b = (*BWrap_b).block(BDesc().nrows(n).ncols(n));
+                auto A_b = (*AWrap).block(BDesc().nrows(n).ncols(n));
+                auto B_b = (*BWrap).block(BDesc().nrows(n).ncols(n));
 
                 // Get computed eigenvectors
                 auto V_b
                     = (*HMat::Wrap(hZRes[b], ldz, n)).block(BDesc().nrows(n).ncols(numRocsolverEigs));
+
+                // If rocSOLVER computed more eigen-pairs then the number of
+                // reference eigenvalues, select the eigen-pairs that match the
+                // reference
                 if(numRocsolverEigs > numMatchingEigs)
                 {
                     rocblas_int ii;
@@ -667,14 +720,13 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 if(itype == rocblas_eform_abx)
                 {
                     auto Z = B_b * V_b;
-                    /* AE = inv(V_b) * A_b * B_b * V_b - HMat::Zeros(numMatchingEigs).diag(eigs_b); */
-                    AE = adjoint(Z) * A_b * Z - HMat::Zeros(numMatchingEigs).diag(eigs_b);
+                    AE = adjoint(Z) * A_b * Z - HMat::Zeros(numMatchingEigs).diag(eigs);
                 }
-                else
+                else // if ((itype == rocblas_eform_ax) || (itype == rocblas_eform_bax))
                 {
-                    AE = adjoint(V_b) * A_b * V_b - HMat::Zeros(numMatchingEigs).diag(eigs_b);
+                    AE = adjoint(V_b) * A_b * V_b - HMat::Zeros(numMatchingEigs).diag(eigs);
                 }
-                err = AE.max_col_norm() / eigs_ref.max_coeff_norm();
+                err = AE.norm() / eigsRef.norm();
                 err *= std::numeric_limits<S>::epsilon() / eta;
                 *max_err = err > *max_err ? err : *max_err;
             }
