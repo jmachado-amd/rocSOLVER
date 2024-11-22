@@ -208,6 +208,54 @@ void testing_sygvdx_hegvdx_bad_arg()
     }
 }
 
+//
+// If the environment variable:
+//
+// ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS
+//
+// is defined, method `sygvdx_hegvdx_getError` will compute errors using the
+// legacy error bounds (for debugging purposes).
+//
+// Otherwise the new error bounds are always used.
+//
+static bool sygvdx_hegvdx_use_legacy_tests()
+{
+    bool status = false;
+    if(const char* env_var = std::getenv("ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS");
+       env_var != nullptr)
+    {
+        status = true;
+    }
+    return status;
+}
+
+//
+// The `sygvdx_hegvdx_getError` method default behaviour is to check if the
+// number of computed eigenvalues match the number of reference eigenvalues,
+// and then to check all computed eigenvalues for their accuracy, but this
+// behaviour can be relaxed.  This leads to two modes of operation: a relaxed
+// check, and the default (full) check; which can be controlled in the
+// following manner:
+//
+// a) If `ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS` is defined, either as a
+// macro or as an environment variable, the test suite won't force the equality
+// of the number of computed eigenvalues with the number of reference
+// eigenvalues and will, instead, use a subset of the computed eigenvalues that
+// match the reference eigenvalues to the given tolerance; except
+//
+// b) If `ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS` is defined as an
+// environment variable, when the tests will unconditionally check all
+// eigenvalues for their accuracy.
+//
+// The relaxed tests are intended as a means to decouple the computation of
+// error bounds of eigenvalues and eigenvectors, and allow the tests to pass in
+// the case that not all eigenvalues could be accurately computed, but all
+// accurate eigenvalues have accurate eigenvectors.  If eigenvectors are not
+// accurate the tests will fail in both the full mode and the relaxed mode.
+//
+// Note: the relaxed version of the tests is only supported when using the new
+// error bounds, see alseo function `sygvdx_hegvdx_use_legacy_tests()`.
+//
 static bool test_for_equality_of_number_of_computed_eigenvalues()
 {
     bool status = true;
@@ -221,17 +269,6 @@ static bool test_for_equality_of_number_of_computed_eigenvalues()
     }
 #endif
     if(const char* env_var = std::getenv("ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS");
-       env_var != nullptr)
-    {
-        status = true;
-    }
-    return status;
-}
-
-static bool sygvdx_hegvdx_use_legacy_tests()
-{
-    bool status = false;
-    if(const char* env_var = std::getenv("ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS");
        env_var != nullptr)
     {
         status = true;
