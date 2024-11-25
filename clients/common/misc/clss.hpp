@@ -3,7 +3,6 @@
 #include <complex>
 #include <cstring>
 #include <iomanip>
-#include <iostream>
 #include <mutex>
 #include <sstream>
 #include <type_traits>
@@ -334,24 +333,28 @@ public:
     //
     // Prints internal information for debugging purposes.
     //
-    // `clss::print_debug` takes a forward reference as its input, which means:
+    // \return std::string with debug information.
     //
-    // a) If `clss::print_debug(sstream)` is called, where sstream is a
-    // std::stringstream, then the debug information will be appended to
-    // sstream;
+    auto print_debug_str() -> std::string
+    {
+        std::ostringstream os;
+        return print_debug(os).str();
+    }
+
     //
-    // b) If `clss::print_debug()` is called, then the debug information will
-    // be appended to the default initialized parameter `ss`.
+    // Prints internal information for debugging purposes.
     //
-    // \param ss: forward reference of a std::stringstream in which debug
-    // information is meant to be appended.
+    // \param os: forward reference to a variable of a type that derives from
+    // std::ostream, in which debug information is meant to be appended to.
     //
-    // \return std::string with copy of the debug information.
+    // \return *reference* to input parameter `os`, for convenience.
     //
-    template <typename K = std::stringstream,
+    // See `clss::print_debug_str` for an example of usage.
+    //
+    template <typename K = std::ostringstream,
               typename
-              = typename std::enable_if<std::is_same<std::decay_t<K>, std::stringstream>::value>::type>
-    [[maybe_unused]] auto print_debug(K&& ss = {}) -> std::string
+              = typename std::enable_if<std::is_base_of_v<std::ostream, K>>::type>
+    [[maybe_unused]] auto print_debug(K& os) -> K&
     {
         std::lock_guard<std::mutex> lock(m_);
 
@@ -362,51 +365,51 @@ public:
         const auto digits
             = static_cast<I>(tol_ > S(0) ? std::ceil(-std::min(std::log10(tol_), S(0))) + 2
                                          : std::numeric_limits<T>::max_digits10);
-        ss << std::fixed << std::setprecision(digits);
+        os << std::fixed << std::setprecision(digits);
 
-        auto print_input_sequences = [&ss](auto& a, auto a_size, auto& b, auto b_size) {
-            ss << ">>> Input: \n";
+        auto print_input_sequences = [&os](auto& a, auto a_size, auto& b, auto b_size) {
+            os << ">>> Input: \n";
 
-            ss << ":: :: a = {";
+            os << ":: :: a = {";
             for(I i = 0; i < a_size; ++i)
             {
-                ss << a[i];
+                os << a[i];
                 if(i != a_size - 1)
                 {
-                    ss << ", ";
+                    os << ", ";
                 }
             }
-            ss << "}\n\n";
+            os << "}\n\n";
 
-            ss << ":: :: b = {";
+            os << ":: :: b = {";
             for(I i = 0; i < b_size; ++i)
             {
-                ss << b[i];
+                os << b[i];
                 if(i != b_size - 1)
                 {
-                    ss << ", ";
+                    os << ", ";
                 }
             }
-            ss << "}\n\n";
+            os << "}\n\n";
         };
 
-        ss << ">>>>>>>>>>>>\n";
-        ss << ":: :: closest_largest_subsequences::print_debug()\n\n" << std::flush;
+        os << ">>>>>>>>>>>>\n";
+        os << ":: :: closest_largest_subsequences::print_debug()\n\n" << std::flush;
         print_input_sequences(a, size_a_, b, size_b_);
-        ss << ":: :: tol = " << tol_ << std::endl << std::endl;
+        os << ":: :: tol = " << tol_ << std::endl << std::endl;
 
-        ss << "++++++++++++\n";
-        ss << ":: :: Subsequences sub_a, sub_b have distance: " << distance_
+        os << "++++++++++++\n";
+        os << ":: :: Subsequences sub_a, sub_b have distance: " << distance_
            << ", size: " << sseqs_size_ << ", and ||sub_a - sub_b||_inf = " << inf_norm_ << std::endl
            << std::endl;
 
-        print_extract_subsequences(ss);
-        ss << "<<<<<<<<<<<<\n" << std::flush;
+        print_extract_subsequences(os);
+        os << "<<<<<<<<<<<<\n" << std::flush;
 
         // Restore defaults
-        ss << std::setprecision(default_precision);
+        os << std::setprecision(default_precision);
 
-        return ss.str();
+        return os;
     }
 
 private:
@@ -589,18 +592,19 @@ private:
         return inf_norm;
     }
 
-    void print_extract_subsequences(std::stringstream& ss)
+    template <typename K = std::ostream>
+    void print_extract_subsequences(K&& os)
     {
-        ss << ">>> Traversing:";
+        os << ">>> Traversing:";
         I sa = size_a_ - I(1);
         I sb = size_b_ - I(1);
         I index = ij2index(sa, sb);
         if(!in_range(index) || (sseqs_size_ == I(0)))
         {
-            ss << " nothing to print\n";
+            os << " nothing to print\n";
             return;
         }
-        ss << std::endl;
+        os << std::endl;
 
         I next_index = index, i = I(0);
         do
@@ -619,7 +623,7 @@ private:
                 ia = sa - ja;
                 ib = sb - jb;
 
-                ss << ""
+                os << ""
                    << ":: :: Indices: (" << ia << ", " << ib << ") :: Elements: (" << sseq_a_[i]
                    << ", " << sseq_b_[i] << ") :: (acc dist = " << memo_dist(ja, jb)
                    << ", size = " << memo_size(ja, jb) << ")\n";
