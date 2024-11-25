@@ -521,7 +521,7 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
     // calls to the solver should look for computed eigenvalues in the range
     // (vl - tol, vu + tol], where `tol = C * n * ulp * ||A||`.
     //
-    S C = 5;
+    S C = 4;
     std::vector<S> tols(bc, 0);
     std::vector<S> norms(bc, 0);
     S tol = 0;
@@ -1099,9 +1099,9 @@ void testing_sygvdx_hegvdx(Arguments& argus)
     }
 
     // validate results for rocsolver-test
-    // using 5 * n * machine_precision as tolerance
+    // using 4 * n * machine_precision as tolerance
     if(argus.unit_check)
-        ROCSOLVER_TEST_CHECK(T, max_error, 5 * n);
+        ROCSOLVER_TEST_CHECK(T, max_error, 4 * n);
 
     // output results for rocsolver-bench
     if(argus.timing)
