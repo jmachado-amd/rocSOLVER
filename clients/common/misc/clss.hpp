@@ -13,7 +13,7 @@
 // @brief `class closest_largest_subsequences`: Functor to compute the closest
 // largest subsequences of a given pair of sequences.
 //
-// Given a tolerance `tol` and a  pair of sequences:
+// Given a tolerance `tol` and a pair of sequences:
 //
 // (a_i), (b_j) with 0 <= i <= n, 0 <= j <= m;
 //
@@ -92,9 +92,9 @@
 // where the latter is the maximal subsequence of STEBZ::eig(A) that satisfies
 // properties (1), (2) and (3) of the definition of `clss` above.
 //
-// For this example, the computed `clss::distance` (i.e., the subsequences l_1
+// For this example, the computed `clss::distance` (i.e., the subsequences' l_1
 // distance) is 0.04, and the computed `clss::inf_norm` (i.e., the
-// sub-sequences l_\inf distance) is `0.01`.
+// sub-sequences' l_\inf distance) is `0.01`.
 //
 // Moreover, method `clss::subseqs_ids` returns the indices of the elements of
 // the subsequences in their original sequences.  For this example,

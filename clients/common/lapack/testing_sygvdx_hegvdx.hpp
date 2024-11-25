@@ -244,14 +244,15 @@ static bool sygvdx_hegvdx_use_legacy_tests()
 // match the reference eigenvalues to the given tolerance; except
 //
 // b) If `ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS` is defined as an
-// environment variable, when the tests will unconditionally check all
+// environment variable, then the tests will unconditionally check all
 // eigenvalues for their accuracy.
 //
 // The relaxed tests are intended as a means to decouple the computation of
-// error bounds of eigenvalues and eigenvectors, and allow the tests to pass in
+// error bounds of eigenvalues and eigenvectors, and allow all tests to pass in
 // the case that not all eigenvalues could be accurately computed, but all
 // accurate eigenvalues have accurate eigenvectors.  If eigenvectors are not
-// accurate the tests will fail in both the full mode and the relaxed mode.
+// accurate the corresponding tests will fail both in full mode and in relaxed
+// mode.
 //
 // Note: the relaxed version of the tests is only supported when using the new
 // error bounds, see alseo function `sygvdx_hegvdx_use_legacy_tests()`.

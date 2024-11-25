@@ -191,23 +191,6 @@ namespace detail
         return (info == 0);
     }
 
-    /* template <typename T, typename W> */
-    /* void cpu_gesvd(rocblas_svect leftv, */
-    /*                rocblas_svect rightv, */
-    /*                rocblas_int m, */
-    /*                rocblas_int n, */
-    /*                T* A, */
-    /*                rocblas_int lda, */
-    /*                W* S, */
-    /*                T* U, */
-    /*                rocblas_int ldu, */
-    /*                T* V, */
-    /*                rocblas_int ldv, */
-    /*                T* work, */
-    /*                rocblas_int lwork, */
-    /*                W* rwork, */
-    /*                rocblas_int* info); */
-
     // Compute singular values and singular vectors of A with lapack_*gesvd
     template <typename T, typename S>
     bool lapack_ge_svd(T const* A, const int nrows, const int ncols, T* U, S* D, T* V)
