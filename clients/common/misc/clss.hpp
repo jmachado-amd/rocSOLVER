@@ -352,8 +352,7 @@ public:
     // See `clss::print_debug_str` for an example of usage.
     //
     template <typename K = std::ostringstream,
-              typename
-              = typename std::enable_if<std::is_base_of_v<std::ostream, K>>::type>
+              typename = typename std::enable_if<std::is_base_of_v<std::ostream, K>>::type>
     [[maybe_unused]] auto print_debug(K& os) -> K&
     {
         std::lock_guard<std::mutex> lock(m_);
