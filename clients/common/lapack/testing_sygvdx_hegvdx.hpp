@@ -698,7 +698,7 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 err = norm_error('F', n, numMatchingEigs, lda, hA[b], hZRes[b], ldz);
                 *max_err = err > *max_err ? err : *max_err;
             }
-            else
+            else // if(!use_legacy_tests)
             {
                 //
                 // Prepare input
@@ -741,7 +741,17 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 }
 
                 //
-                // Check accuracy of eigenpairs with "relative Weyl" error bound
+                // Check eigenpairs' accuracy with "Relative Weyl" error bound:
+                //
+                // Let X (cond(X) < Inf), and A (A^* = A) be such that A has
+                // eigenvalues {a_i} and B = X^t*A*X has eigenvalues {b_i}.
+                // Then:
+                //
+                // |a_i - b_i| <= |a_i| ||X^t * X - I||_2
+                //
+                // Note: for rocSOLVER's sygv, if V is the eigenvectors' matrix
+                // and B = L*L^t, then either X = L^t*V (cases 1 and 2) or X =
+                // inv(L)*V (case 3).
                 //
                 auto VE = HMat::Empty();
                 if(itype == rocblas_eform_bax)
@@ -753,6 +763,7 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                     VE = adjoint(V_b) * B_b * V_b - HMat::Eye(numMatchingEigs);
                 }
                 S eta = std::max(VE.norm(), std::numeric_limits<S>::epsilon());
+                *max_err = eta > *max_err ? eta : *max_err;
 
                 auto AE = HMat::Empty();
                 if(itype == rocblas_eform_abx)

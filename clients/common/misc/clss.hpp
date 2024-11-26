@@ -91,9 +91,9 @@
 // where the latter is the maximal subsequence of STEBZ::eig(A) that satisfies
 // properties (1), (2) and (3) of the definition of `clss` above.
 //
-// For this example, the computed `clss::distance` (i.e., the subsequences' l_1
+// For this example, the computed `clss::distance` (i.e., the subsequences' l^1
 // distance) is 0.04, and the computed `clss::inf_norm` (i.e., the
-// sub-sequences' l_\inf distance) is `0.01`.
+// sub-sequences' l^\inf distance) is `0.01`.
 //
 // Moreover, method `clss::subseqs_ids` returns the indices of the elements of
 // the subsequences in their original sequences.  For this example,
@@ -127,8 +127,8 @@ public:
     //
     // \param size_b: number of elements in second sequence.
     //
-    // \return l_1 distance between subsequences (save value returned by method
-    // `clss::distance`.
+    // \return l^1 distance between subsequences (same value returned by method
+    // `clss::distance`).
     //
     [[maybe_unused]] auto operator()(T const* a, I size_a, T const* b, I size_b, S tol)
         -> /**! Size of subsequences */ I
@@ -173,23 +173,6 @@ public:
     //
     // Computes the largest closest subsequences of input sequences `a` and `b`.
     //
-    // \param a:      first sequence, vector of const T.
-    //
-    // \param b:      second sequence, vector of const T.
-    //
-    // \return l_1 distance between subsequences (save value returned by method
-    // `clss::distance`.
-    //
-    [[maybe_unused]] auto operator()(const std::vector<T>& a, const std::vector<T>& b, S tol)
-        -> /**! Size of subsequences */ I
-    {
-        return this->operator()(a.data(), static_cast<I>(a.size()), b.data(),
-                                static_cast<I>(b.size()), tol);
-    }
-
-    //
-    // Computes the largest closest subsequences of input sequences `a` and `b`.
-    //
     // \param a:      first sequence, pointer to array of T.
     //
     // \param size_a: number of elements in first sequence.
@@ -198,8 +181,8 @@ public:
     //
     // \param size_b: number of elements in second sequence.
     //
-    // \return l_1 distance between subsequences (save value returned by method
-    // `clss::distance`.
+    // \return l^1 distance between subsequences (same value returned by method
+    // `clss::distance`).
     //
     [[maybe_unused]] auto operator()(T* a, I size_a, T* b, I size_b, S tol)
         -> /**! Size of subsequences */ I
@@ -221,10 +204,10 @@ public:
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
     //
-    // \return l_1 distance between subsequences (save value returned by method
-    // `clss::distance`.
+    // \return l^1 distance between subsequences (same value returned by method
+    // `clss::distance`).
     //
-    template <typename J, typename = typename std::enable_if<std::is_integral<std::decay_t<J>>::value>::type>
+    template <typename J, typename = typename std::enable_if<std::is_integral<J>::value>::type>
     [[maybe_unused]] auto operator()(T const* a, J size_a, T const* b, J size_b, S tol)
         -> /**! Size of subsequences */ I
     {
@@ -244,10 +227,10 @@ public:
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
     //
-    // \return l_1 distance between subsequences (save value returned by method
-    // `clss::distance`.
+    // \return l^1 distance between subsequences (same value returned by method
+    // `clss::distance`).
     //
-    template <typename J, typename = typename std::enable_if<std::is_integral<std::decay_t<J>>::value>::type>
+    template <typename J, typename = typename std::enable_if<std::is_integral<J>::value>::type>
     [[maybe_unused]] auto operator()(T* a, J size_a, T* b, J size_b, S tol)
         -> /**! Size of subsequences */ I
     {
@@ -256,10 +239,26 @@ public:
     }
 
     //
-    // Returns the l_1 distance between subsequences, or Inf if at least one of
+    // Computes the largest closest subsequences of input sequences `a` and `b`.
+    //
+    // \param a:      first sequence, const vector of T.
+    //
+    // \param b:      second sequence, const vector of T.
+    //
+    // \return l^1 distance between subsequences (same value returned by method
+    // `clss::distance`).
+    //
+    [[maybe_unused]] auto operator()(const std::vector<T>& a, const std::vector<T>& b, S tol)
+        -> /**! Size of subsequences */ I
+    {
+        return this->operator()(a.data(), a.size(), b.data(), b.size(), tol);
+    }
+
+    //
+    // Returns the l^1 distance between subsequences, or Inf if at least one of
     // them is empty.
     //
-    // \return l_1 distance between subsequences.
+    // \return l^1 distance between subsequences.
     //
     auto distance() -> S
     {
@@ -268,10 +267,10 @@ public:
     }
 
     //
-    // Returns the l_\inf distance between subsequences, or Inf if at least one
+    // Returns the l^\inf distance between subsequences, or Inf if at least one
     // of them is empty.
     //
-    // \return l_\inf distance between subsequences.
+    // \return l^\inf distance between subsequences.
     //
     auto inf_norm() -> S
     {
