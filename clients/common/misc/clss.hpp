@@ -343,7 +343,7 @@ public:
     //
     // Prints internal information for debugging purposes.
     //
-    // \param os: forward reference to a variable of a type that derives from
+    // \param os: reference to a variable of a type that derives from
     // std::ostream, in which debug information is meant to be appended to.
     //
     // \return *reference* to input parameter `os`, for convenience.
