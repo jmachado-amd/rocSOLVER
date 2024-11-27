@@ -512,9 +512,9 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
     }
 
     //
-    // Given an eigenvalue l_i of A and a computed eigenvalue l_i^* (obtained
-    // with a backward stable method) the best we can hope for, in general, is
-    // that | l_i - l_i^* | <= K * ulp * ||A||, where K depends on n and ||.||.
+    // Given an eigenvalue l_i of the symmetric matrix A and a computed
+    // eigenvalue l_i^* (obtained with a backward stable method), Weyl's
+    // theorem yields |l_i - l_i^*| <= K*ulp*||A||_2, where K depends on n.
     // For the sake of this test, we will set K = C * n, with C ~ 1.
     //
     // Thus, if the range to look for eigenvalues is the interval (vl, vu],
@@ -744,10 +744,10 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 // Check eigenpairs' accuracy with "Relative Weyl" error bound:
                 //
                 // Let X (cond(X) < Inf), and A (A^* = A) be such that A has
-                // eigenvalues {a_i} and B = X^t*A*X has eigenvalues {b_i}.
+                // eigenvalues {a_i} and H = X^t*A*X has eigenvalues {h_i}.
                 // Then:
                 //
-                // |a_i - b_i| <= |a_i| ||X^t * X - I||_2
+                // |a_i - h_i| <= |a_i|*||X^t*X - I||_2
                 //
                 // Note: for rocSOLVER's sygv, if V is the eigenvectors' matrix
                 // and B = L*L^t, then either X = L^t*V (cases 1 and 2) or X =

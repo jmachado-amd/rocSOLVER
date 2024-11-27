@@ -359,7 +359,7 @@ public:
         auto a = seq_a_.data();
         auto b = seq_b_.data();
 
-        const auto default_precision{std::cout.precision()};
+        const auto default_precision{os.precision()};
         const auto digits
             = static_cast<I>(tol_ > S(0) ? std::ceil(-std::min(std::log10(tol_), S(0))) + 2
                                          : std::numeric_limits<T>::max_digits10);
