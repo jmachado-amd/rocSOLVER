@@ -113,8 +113,8 @@ public:
         return ptr;
     }
 
-    template <template <typename, typename> class HostMatrix_, typename T__, typename I__>
-    static auto Convert(const HostMatrix_<T__, I__>& In) -> HostMatrix<T_, I_>
+    template <template <typename, typename> class HostMatrix_, typename TT_, typename II_>
+    static auto Convert(const HostMatrix_<TT_, II_>& In) -> HostMatrix<T_, I_>
     {
         HostMatrix<T_, I_> Out(In.nrows(), In.ncols());
 

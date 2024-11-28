@@ -119,11 +119,11 @@ public:
     //
     // Computes the largest closest subsequences of input sequences `a` and `b`.
     //
-    // \param a:      first sequence, pointer to array of const T.
+    // \param a:      pointer to first sequence, array of const T.
     //
     // \param size_a: number of elements in first sequence.
     //
-    // \param b:      second sequence, pointer to array of const T.
+    // \param b:      pointer to second sequence, array of const T.
     //
     // \param size_b: number of elements in second sequence.
     //
@@ -173,11 +173,11 @@ public:
     //
     // Computes the largest closest subsequences of input sequences `a` and `b`.
     //
-    // \param a:      first sequence, pointer to array of T.
+    // \param a:      pointer to first sequence, array of T.
     //
     // \param size_a: number of elements in first sequence.
     //
-    // \param b:      second sequence, pointer to array of T.
+    // \param b:      pointer to second sequence, array of T.
     //
     // \param size_b: number of elements in second sequence.
     //
@@ -194,12 +194,12 @@ public:
     //
     // Computes the largest closest subsequences of input sequences `a` and `b`.
     //
-    // \param a:      first sequence, pointer to array of const T.
+    // \param a:      pointer to first sequence, array of const T.
     //
     // \param size_a: number of elements in first sequence; type can differ from
     // template parameter I.
     //
-    // \param b:      second sequence, pointer to array of const T.
+    // \param b:      pointer to second sequence, array of const T.
     //
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
@@ -217,12 +217,12 @@ public:
     //
     // Computes the largest closest subsequences of input sequences `a` and `b`.
     //
-    // \param a:      first sequence, pointer to array of T.
+    // \param a:      pointer to first sequence, array of T.
     //
     // \param size_a: number of elements in first sequence; type can differ from
     // template parameter I.
     //
-    // \param b:      second sequence, pointer to array of T.
+    // \param b:      pointer to second sequence, array of T.
     //
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
