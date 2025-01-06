@@ -92,7 +92,7 @@
 // properties (1), (2) and (3) of the definition of `clss` above.
 //
 // For this example, the computed `clss::distance` (i.e., the subsequences' l^1
-// distance) is 0.04, and the computed `clss::inf_norm` (i.e., the
+// distance) is 0.04, and the computed `clss::inf_norm_distance` (i.e., the
 // sub-sequences' l^\inf distance) is `0.01`.
 //
 // Moreover, method `clss::subseqs_ids` returns the indices of the elements of
@@ -272,7 +272,7 @@ public:
     //
     // \return l^\inf distance between subsequences.
     //
-    auto inf_norm() -> S
+    auto inf_norm_distance() -> S
     {
         std::lock_guard<std::mutex> lock(m_);
         return inf_norm_;

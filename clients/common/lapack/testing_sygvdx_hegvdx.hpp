@@ -741,7 +741,8 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                 }
 
                 //
-                // Check eigenpairs' accuracy with "Relative Weyl" error bound:
+                // Check eigenpairs' accuracy with a "Relative Weyl" error
+                // bound, which (at its simplest form) states the following.
                 //
                 // Let X (cond(X) < Inf), and A (A^* = A) be such that A has
                 // eigenvalues {a_i} and H = X^t*A*X has eigenvalues {h_i}.
