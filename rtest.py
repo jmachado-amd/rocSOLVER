@@ -67,6 +67,8 @@ def parse_args():
     #                     help='Verbose install (optional, default: False)')
     parser.add_argument(      '--ci_labels', nargs='?', type=str, required=False, default="",
                         help='Semicolon (";") separated list of GitHub Labels with test options (not implemented, silently ignored)')
+    parser.add_argument(      '--ci_gfx', nargs='?', type=str, required=False, default="",
+                        help='Semicolon (";") separated list of gfx targets expected on test runs (not implemented, silently ignored)')
     args = parser.parse_args()
 
     if not (args.test or args.emulation):
