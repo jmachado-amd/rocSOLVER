@@ -154,9 +154,10 @@ public:
     //
     // \param size_b: number of elements in second sequence.
     //
-    // \return l^1 distance between subsequences (same value returned by method
-    // `clss::distance`).
+    // \return size of subsequences (equals the maximal number of matching
+    // elements of the original sequences)
     //
+
     [[maybe_unused]] auto operator()(T const* a, I size_a, T const* b, I size_b, S tol)
         -> /**! Size of subsequences */ I
     {
@@ -208,8 +209,8 @@ public:
     //
     // \param size_b: number of elements in second sequence.
     //
-    // \return l^1 distance between subsequences (same value returned by method
-    // `clss::distance`).
+    // \return size of subsequences (equals the maximal number of matching
+    // elements of the original sequences)
     //
     [[maybe_unused]] auto operator()(T* a, I size_a, T* b, I size_b, S tol)
         -> /**! Size of subsequences */ I
@@ -231,8 +232,8 @@ public:
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
     //
-    // \return l^1 distance between subsequences (same value returned by method
-    // `clss::distance`).
+    // \return size of subsequences (equals the maximal number of matching
+    // elements of the original sequences)
     //
     template <typename J, typename = typename std::enable_if<std::is_integral<J>::value>::type>
     [[maybe_unused]] auto operator()(T const* a, J size_a, T const* b, J size_b, S tol)
@@ -254,8 +255,8 @@ public:
     // \param size_b: number of elements in second sequence; type can differ from
     // template parameter I.
     //
-    // \return l^1 distance between subsequences (same value returned by method
-    // `clss::distance`).
+    // \return size of subsequences (equals the maximal number of matching
+    // elements of the original sequences)
     //
     template <typename J, typename = typename std::enable_if<std::is_integral<J>::value>::type>
     [[maybe_unused]] auto operator()(T* a, J size_a, T* b, J size_b, S tol)
@@ -272,8 +273,8 @@ public:
     //
     // \param b:      second sequence, const vector of T.
     //
-    // \return l^1 distance between subsequences (same value returned by method
-    // `clss::distance`).
+    // \return size of subsequences (equals the maximal number of matching
+    // elements of the original sequences)
     //
     [[maybe_unused]] auto operator()(const std::vector<T>& a, const std::vector<T>& b, S tol)
         -> /**! Size of subsequences */ I

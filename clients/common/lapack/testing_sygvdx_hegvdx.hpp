@@ -213,7 +213,7 @@ void testing_sygvdx_hegvdx_bad_arg()
 //
 // ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS
 //
-// is defined, method `sygvdx_hegvdx_getError` will compute errors using the
+// is defined, `sygvdx_hegvdx_getError` will compute errors using the
 // legacy error bounds (for debugging purposes).
 //
 // Otherwise the new error bounds are always used.
@@ -221,8 +221,7 @@ void testing_sygvdx_hegvdx_bad_arg()
 static bool sygvdx_hegvdx_use_legacy_tests()
 {
     bool status = false;
-    if(const char* env_var = std::getenv("ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS");
-       env_var != nullptr)
+    if(std::getenv("ROCSOLVER_SYGVDX_HEGVDX_USE_LEGACY_TESTS") != nullptr)
     {
         status = true;
     }
@@ -230,47 +229,42 @@ static bool sygvdx_hegvdx_use_legacy_tests()
 }
 
 //
-// The `sygvdx_hegvdx_getError` method default behaviour is to check if the
+// The default behaviour of `sygvdx_hegvdx_getError()` is to check if the
 // number of computed eigenvalues match the number of reference eigenvalues,
 // and then to check all computed eigenvalues for their accuracy, but this
 // behaviour can be relaxed.  This leads to two modes of operation: a relaxed
-// check, and the default (full) check; which can be controlled in the
+// check and a full (default) check.  Those are controlled by function
+// `test_for_equality_of_number_of_computed_eigenvalues()`, below, in the
 // following manner:
 //
-// a) If `ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS` is defined, either as a
-// macro or as an environment variable, the test suite won't force the equality
-// of the number of computed eigenvalues with the number of reference
-// eigenvalues and will, instead, use a subset of the computed eigenvalues that
-// match the reference eigenvalues to the given tolerance; except
+// a) If `ROCSOLVER_LAX_EIGENSOLVERS_TESTS` is defined, then the test suite
+// will only use the subset of computed eigenvalues that match reference
+// eigenvalues (up to the given tolerance); except
 //
-// b) If `ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS` is defined as an
-// environment variable, then the tests will unconditionally check all
-// eigenvalues for their accuracy.
+// b) If `ROCSOLVER_FULL_EIGENSOLVERS_TESTS` is defined, then the test suite
+// will unconditionally check all eigenvalues for their accuracy.
 //
 // The relaxed tests are intended as a means to decouple the computation of
-// error bounds of eigenvalues and eigenvectors, and allow all tests to pass in
-// the case that not all eigenvalues could be accurately computed, but all
-// accurate eigenvalues have accurate eigenvectors.  If eigenvectors are not
-// accurate the corresponding tests will fail both in full mode and in relaxed
-// mode.
+// error bounds of eigenvalues and eigenvectors, allowing tests to pass in the
+// case that not all eigenvalues could be accurately computed, but all accurate
+// eigenvalues have accurate eigenvectors.  If eigenvectors are not accurate,
+// the corresponding tests will fail both in full mode and in relaxed mode.
 //
 // Note: the relaxed version of the tests is only supported when using the new
-// error bounds, see alseo function `sygvdx_hegvdx_use_legacy_tests()`.
+// error bounds, see also function `sygvdx_hegvdx_use_legacy_tests()`.
 //
 static bool test_for_equality_of_number_of_computed_eigenvalues()
 {
     bool status = true;
-#if defined(ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS)
+#if defined(ROCSOLVER_LAX_EIGENSOLVERS_TESTS)
     status = false;
 #else
-    if(const char* env_var = std::getenv("ROCSOLVER_LAX_EXPERT_EIGENSOLVERS_TESTS");
-       env_var != nullptr)
+    if(std::getenv("ROCSOLVER_LAX_EIGENSOLVERS_TESTS") != nullptr)
     {
         status = false;
     }
 #endif
-    if(const char* env_var = std::getenv("ROCSOLVER_FULL_EXPERT_EIGENSOLVERS_TESTS");
-       env_var != nullptr)
+    if(std::getenv("ROCSOLVER_FULL_EIGENSOLVERS_TESTS") != nullptr)
     {
         status = true;
     }
@@ -619,7 +613,6 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
             }
             else
             {
-                /* err = clss[b].inf_norm() / std::max(norms[b], std::numeric_limits<S>::epsilon()); */
                 // Get computed eigenvalues
                 auto eigs
                     = *HMat::Convert(rocsolverEigs.data(), rocsolverEigs.size(),
@@ -665,11 +658,13 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
 
                     // move B*x into hZRes
                     for(rocblas_int i = 0; i < n; i++)
+                    {
                         for(rocblas_int j = 0; j < numMatchingEigs; j++)
                         {
                             int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
                             hZRes[b][i + j * ldz] = hB[b][i + jj * ldb];
                         }
+                    }
                 }
                 else
                 {
@@ -685,12 +680,14 @@ void sygvdx_hegvdx_getError(const rocblas_handle handle,
                     }
                     // move hZRes
                     for(rocblas_int i = 0; i < n; i++)
+                    {
                         for(rocblas_int j = 0; j < numMatchingEigs; j++)
                         {
                             int jj = hWResIds[j]; // Id of rocSOLVER eigen-pair associated to j-th LAPACK eigen-pair
                             if(j != jj)
                                 hZRes[b][i + j * ldz] = hZRes[b][i + jj * ldz];
                         }
+                    }
                 }
 
                 // error is ||hA - hZRes|| / ||hA||
