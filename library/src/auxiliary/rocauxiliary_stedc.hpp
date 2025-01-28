@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2021-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2021-2025 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1755,7 +1755,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
             rocblas_int j = vidb;
             bool go = (j < ns[tid]);
             S* putvec = USEGEMM ? vecs : temps;
-                
+
             if(go)
             {
                 if(idd[p2 + j] == 1)
@@ -1843,7 +1843,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                         }
                     }
                 }
-            }                
+            }
         }
     }
 }
@@ -2091,7 +2091,7 @@ void local_gemm(rocblas_handle handle,
 {
     S one = 1.0;
     S zero = 0.0;
-    
+
     // Execute A*B -> temp -> A
     // temp = A*B
     rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_none, n, n, n, &one, A, shiftA,
@@ -2129,7 +2129,7 @@ void local_gemm(rocblas_handle handle,
 {
     S one = 1.0;
     S zero = 0.0;
-    
+
     // Execute A -> work; work*B -> temp -> A
 
     // work = real(A)
@@ -2403,8 +2403,8 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
         // TODO: using max number of levels for now. Kernels return immediately when surpassing
         // the actual number of levels in the split block. We should explore if synchronizing
         // to copy back the actual number of levels makes any difference.
-        // TODO: the code computing the context of the level (first part of each kernel) could be 
-        // resused. 
+        // TODO: the code computing the context of the level (first part of each kernel) could be
+        // resused.
         for(rocblas_int k = 0; k < maxlevs; ++k)
         {
             // a. prepare secular equations
@@ -2429,16 +2429,16 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
 
             if(STEDC_EXTERNAL_GEMM)
             {
-                // using external gemms with padded matrices to do the vector update 
+                // using external gemms with padded matrices to do the vector update
                 // One single full gemm of size n x n x n merges all the blocks in the level
                 // TODO: using macro STEDC_EXTERNAL_GEMM = true for now. In the future we can pass
                 // STEDC_EXTERNAL_GEMM at run time to switch between internal vector updates and
                 // external gemm based updates.
                 rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_none, n, n, n,
-                    &one, V, 0, ldv, strideV, tempgemm, n*n, n, 2*n*n, &zero, tempgemm, 0, n, 2*n*n, 
+                    &one, V, 0, ldv, strideV, tempgemm, n*n, n, 2*n*n, &zero, tempgemm, 0, n, 2*n*n,
                     batch_count, workArr);
             }
-            
+
             // d. update level
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeUpdate_kernel<rocsolver_stedc_mode_qr, S>),
                                     dim3(numgrps3, STEDC_NUM_SPLIT_BLKS, batch_count),
