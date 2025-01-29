@@ -94,11 +94,11 @@ rocblas_status rocsolver_stedc_impl(rocblas_handle handle,
     splits_map = mem[4];
     workArr = mem[5];
 
-    if (size_tempgemm > 0)
+    if(size_tempgemm > 0)
     {
         hipStream_t stream;
         rocblas_get_stream(handle, &stream);
-        HIP_CHECK(hipMemsetAsync((void *)tempgemm, 0, size_tempgemm, stream));
+        HIP_CHECK(hipMemsetAsync((void*)tempgemm, 0, size_tempgemm, stream));
     }
 
     // execution
