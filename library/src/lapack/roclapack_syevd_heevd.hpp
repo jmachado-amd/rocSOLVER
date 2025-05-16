@@ -158,6 +158,9 @@ rocblas_status rocsolver_syevd_heevd_template(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
+    printf("Begin rocsolver_syevd_template().\n");
+    find_nan(A, n*lda, "A (input)");
+
     rocblas_int blocksReset = (batch_count - 1) / BS1 + 1;
     dim3 gridReset(blocksReset, 1, 1);
     dim3 threads(BS1, 1, 1);
@@ -212,6 +215,10 @@ rocblas_status rocsolver_syevd_heevd_template(rocblas_handle handle,
                                 shiftA, lda, strideA);
     }
 
+    find_nan(D, n, "D (eigenvalues)");
+    find_nan(A, n*lda, "A (eigenvectors)");
+
+    printf("End rocsolver_syevd_template().\n");
     return rocblas_status_success;
 }
 
