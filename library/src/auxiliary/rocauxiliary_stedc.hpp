@@ -2294,6 +2294,11 @@ __global__ void find_nan(T* mem, int n, int* result)
                 *result = 1;
             }
         }
+        if ((mem[i] != mem[i]))
+        {
+            printf("\n!!! Found NaN at mem pos: %p!!!\n", (void *)(mem + i)); 
+            *result = 1;
+        }
 
     }
 }
@@ -2398,9 +2403,33 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
         find_nan(D, n, "D (input)");
         find_nan(E, n - 1, "E (input)");
 
-        // initialize temporary array for vector updates
-        size_t size_tempgemm = sizeof(S) * 2 * n * n * batch_count;
-        HIP_CHECK(hipMemsetAsync((void*)tempgemm, 0, size_tempgemm, stream));
+        /* // initialize temporary array for vector updates */
+        /* size_t size_tempgemm = sizeof(S) * 2 * n * n * batch_count; */
+        /* HIP_CHECK(hipMemsetAsync((void*)tempgemm, 0, size_tempgemm, stream)); */
+        {
+            // memory workspace sizes:
+            // size for lasrt stack/stedc workspace
+            size_t size_work_stack;
+            // size for temporary computations
+            size_t size_tempvect, size_tempgemm;
+            // size for pointers to workspace (batched case)
+            size_t size_workArr;
+            // size for vector with positions of split blocks
+            size_t size_splits_map;
+            // size for temporary diagonal and z vectors.
+            size_t size_tmpz;
+            rocsolver_stedc_getMemorySize<BATCHED, T, S>(evect, n, batch_count, &size_work_stack,
+                    &size_tempvect, &size_tempgemm, &size_tmpz,
+                    &size_splits_map, &size_workArr);
+
+            // initialize temporary array for vector updates
+            HIP_CHECK(hipMemsetAsync((void*)work_stack, 0, size_work_stack, stream));
+            HIP_CHECK(hipMemsetAsync((void*)tempvect, 0, size_tempvect, stream));
+            HIP_CHECK(hipMemsetAsync((void*)tempgemm, 0, size_tempgemm, stream));
+            HIP_CHECK(hipMemsetAsync((void*)tmpz, 0, size_tmpz, stream));
+            HIP_CHECK(hipMemsetAsync((void*)splits, 0, size_splits_map, stream));
+            HIP_CHECK(hipMemsetAsync((void*)workArr, 0, size_workArr, stream));
+        }
 
         // everything must be executed with scalars on the host
         rocblas_pointer_mode old_mode;
