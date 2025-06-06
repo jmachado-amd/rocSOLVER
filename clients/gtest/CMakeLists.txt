@@ -1,5 +1,5 @@
 # ##########################################################################
-# Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -96,6 +96,7 @@ set(rocauxiliary_test_source
   auxiliary/ormxl_unmxl_gtest.cpp
   auxiliary/ormbr_unmbr_gtest.cpp
   auxiliary/ormtr_unmtr_gtest.cpp
+  auxiliary/ormtr_sb2st_gtest.cpp
   # bidiagonal matrices
   auxiliary/labrd_gtest.cpp
   auxiliary/bdsqr_gtest.cpp

@@ -49,6 +49,9 @@
 #include "hip/hip_runtime.h"
 #include "hip/hip_runtime_api.h"
 
+#include "rocblas.hpp"
+#include "rocsolver/rocsolver.h"
+
 ROCSOLVER_BEGIN_NAMESPACE
 
 #ifndef HIP_CHECK
@@ -81,26 +84,26 @@ __device__ T reduce_sum_shfl_wsize(I const wsize, T val)
     // Each thread adds its partial sum[i] to sum[lane+i]
     if(wsize == 64)
     {
-        val += __shfl_down(val, 32); // offset = 32
-        val += __shfl_down(val, 16); // offset = 16
-        val += __shfl_down(val, 8); // offset = 8
-        val += __shfl_down(val, 4); // offset = 4
-        val += __shfl_down(val, 2); // offset = 2
-        val += __shfl_down(val, 1); // offset = 1
+        val += shfl_down(val, 32); // offset = 32
+        val += shfl_down(val, 16); // offset = 16
+        val += shfl_down(val, 8); // offset = 8
+        val += shfl_down(val, 4); // offset = 4
+        val += shfl_down(val, 2); // offset = 2
+        val += shfl_down(val, 1); // offset = 1
     }
     else if(wsize == 32)
     {
-        val += __shfl_down(val, 16); // offset = 16
-        val += __shfl_down(val, 8); // offset = 8
-        val += __shfl_down(val, 4); // offset = 4
-        val += __shfl_down(val, 2); // offset = 2
-        val += __shfl_down(val, 1); // offset = 1
+        val += shfl_down(val, 16); // offset = 16
+        val += shfl_down(val, 8); // offset = 8
+        val += shfl_down(val, 4); // offset = 4
+        val += shfl_down(val, 2); // offset = 2
+        val += shfl_down(val, 1); // offset = 1
     }
     else
     {
         for(auto offset = wsize / 2; offset > 0; offset /= 2)
         {
-            val += __shfl_down(val, offset);
+            val += shfl_down(val, offset);
             // g.sync();
         }
     }
@@ -743,12 +746,12 @@ static void ormtr_sb2st_template(hipStream_t stream,
                                  I const noffdiag,
 
                                  TA A_,
-                                 Istride const shiftA,
+                                 I const shiftA,
                                  I const lda,
                                  Istride const strideA,
 
                                  TC C_,
-                                 Istride const shiftC,
+                                 I const shiftC,
                                  I const ldc,
                                  Istride const strideC,
 
@@ -802,6 +805,36 @@ static void ormtr_sb2st_template(hipStream_t stream,
                                                                              batch_count, lds_size);
         }
     }
+}
+
+template <typename T, typename U>
+rocblas_status rocsolver_ormtr_sb2st_template(rocblas_handle handle,
+                                              const rocblas_int n,
+                                              const rocblas_int nb,
+                                              U A,
+                                              const rocblas_int shiftA,
+                                              const rocblas_int lda,
+                                              const rocblas_stride strideA,
+                                              U C,
+                                              const rocblas_int shiftC,
+                                              const rocblas_int ldc,
+                                              const rocblas_stride strideC,
+                                              const rocblas_int batch_count)
+{
+    ROCSOLVER_ENTER("ormtr_sb2st", "n:", n, "nb:", nb, "shiftA:", shiftA, "lda:", lda,
+                    "shiftC:", shiftC, "ldc:", ldc, "bc:", batch_count);
+
+    // quick return
+    if(n == 0 || batch_count == 0)
+        return rocblas_status_success;
+
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    ormtr_sb2st_template<T>(stream, n, nb, A, shiftA, lda, strideA, C, shiftC, ldc, strideC,
+                            batch_count);
+
+    return rocblas_status_success;
 }
 
 ROCSOLVER_END_NAMESPACE

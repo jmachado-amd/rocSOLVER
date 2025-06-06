@@ -1,5 +1,5 @@
 # ##########################################################################
-# Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -256,6 +256,7 @@ set(rocsolver_auxiliary_source
   auxiliary/rocauxiliary_ormql_unmql.cpp
   auxiliary/rocauxiliary_ormbr_unmbr.cpp
   auxiliary/rocauxiliary_ormtr_unmtr.cpp
+  auxiliary/rocauxiliary_ormtr_sb2st.cpp
   # bidiagonal matrices
   auxiliary/rocauxiliary_bdsqr.cpp
   auxiliary/rocauxiliary_bdsvdx.cpp
