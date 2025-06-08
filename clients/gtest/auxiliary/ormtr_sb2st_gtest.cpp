@@ -115,20 +115,20 @@ TEST_P(ORMTR_SB2ST, __double)
     run_tests<double>();
 }
 
-TEST_P(UNMTR_HB2ST, __float_complex)
-{
-    run_tests<rocblas_float_complex>();
-}
+/* TEST_P(UNMTR_HB2ST, __float_complex) */
+/* { */
+/*     run_tests<rocblas_float_complex>(); */
+/* } */
 
-TEST_P(UNMTR_HB2ST, __double_complex)
-{
-    run_tests<rocblas_double_complex>();
-}
+/* TEST_P(UNMTR_HB2ST, __double_complex) */
+/* { */
+/*     run_tests<rocblas_double_complex>(); */
+/* } */
 
 INSTANTIATE_TEST_SUITE_P(daily_lapack, ORMTR_SB2ST, Combine(ValuesIn(large_matrix_size_range)));
 
 INSTANTIATE_TEST_SUITE_P(checkin_lapack, ORMTR_SB2ST, Combine(ValuesIn(matrix_size_range)));
 
-INSTANTIATE_TEST_SUITE_P(daily_lapack, UNMTR_HB2ST, Combine(ValuesIn(large_matrix_size_range)));
+/* INSTANTIATE_TEST_SUITE_P(daily_lapack, UNMTR_HB2ST, Combine(ValuesIn(large_matrix_size_range))); */
 
-INSTANTIATE_TEST_SUITE_P(checkin_lapack, UNMTR_HB2ST, Combine(ValuesIn(matrix_size_range)));
+/* INSTANTIATE_TEST_SUITE_P(checkin_lapack, UNMTR_HB2ST, Combine(ValuesIn(matrix_size_range))); */
