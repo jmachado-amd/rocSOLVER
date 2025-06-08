@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include "common/matrix_utils/matrix_utils.hpp"
 #include "common/misc/client_util.hpp"
 #include "common/misc/clientcommon.hpp"
 #include "common/misc/lapack_host_reference.hpp"
@@ -44,17 +45,55 @@ void ormtr_sb2st_initData(const rocblas_handle handle,
                           Uh& hA,
                           const rocblas_int bc)
 {
+    /* if(CPU) */
+    /* { */
+    /*     rocblas_init<T>(hA, true); */
+
+    /*     // Generate A matrix */
+    /*     for(rocblas_int b = 0; b < bc; ++b) */
+    /*     { */
+    /*         for(rocblas_int i = 0; i < n; i++) */
+    /*         { */
+    /*             for(rocblas_int j = 0; j < n; j++) */
+    /*             { */
+    /*             } */
+    /*         } */
+    /*     } */
+    /* } */
+
+    /* if(GPU) */
+    /* { */
+    /*     // now copy to the GPU */
+    /*     CHECK_HIP_ERROR(dA.transfer_from(hA)); */
+    /* } */
+
     if(CPU)
     {
         rocblas_init<T>(hA, true);
 
-        // Generate A matrix
+        // scale A to avoid singularities
+        // transform A to a banded matrix
         for(rocblas_int b = 0; b < bc; ++b)
         {
             for(rocblas_int i = 0; i < n; i++)
             {
-                for(rocblas_int j = 0; j < n; j++)
+                for(rocblas_int j = i; j < n; j++)
                 {
+                    if(i == j)
+                    {
+                        hA[b][i + j * lda] = std::real(hA[b][i + j * lda]) + 400;
+                    }
+                    else if(j > i + nb)
+                    {
+                        hA[b][i + j * lda] = 0;
+                    }
+                    else
+                    {
+                        hA[b][i + j * lda] -= 4;
+                    }
+
+                    if(i != j)
+                        hA[b][j + i * lda] = sconj(hA[b][i + j * lda]);
                 }
             }
         }
@@ -80,18 +119,109 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
                           Uh& hCRes,
                           double* max_err)
 {
+    using S = decltype(std::real(T{}));
+    using HMat = HostMatrix<T, rocblas_int>;
+    using BDesc = typename HMat::BlockDescriptor;
+
     // input data initialization
     ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, hA, 1);
+
+    // Create banded matrix with sb2st
+    size_t size_D = n;
+    size_t size_E = size_D; // Review size_E accross all code, for a single instance it is meant to be n - 1
+    device_strided_batch_vector<S> dD(size_D, 1, size_D, 1);
+    device_strided_batch_vector<S> dE(size_E, 1, size_E, 1);
+    CHECK_ROCBLAS_ERROR(rocsolver_sb2st_hb2st(handle, n, nb, dA.data(), lda, dD.data(), dE.data()));
+
+    // Recover triangular matrix (more precisely, recover its diagnonal and sub-diagonal):
+    size_t size_Dres = size_D;
+    size_t size_Eres = size_E;
+    host_strided_batch_vector<S> hDRes(size_Dres, 1, size_Dres, 1);
+    host_strided_batch_vector<S> hERes(size_Eres, 1, size_Eres, 1);
+    CHECK_HIP_ERROR(hDRes.transfer_from(dD));
+    CHECK_HIP_ERROR(hERes.transfer_from(dE));
+
+    // Copy band matrix
+    size_t size_A = lda * n;
+    host_strided_batch_vector<T> hB(size_A, 1, size_A, 1);
+    CHECK_HIP_ERROR(hB.transfer_from(dA));
+
+    double err;
+    *max_err = 0.;
+    {
+        /* // Check error of sb2st step: */
+
+        /* // Compute eigenvalues of tridiagonal matrix */
+        /* cpu_sterf(n, hDRes.data(), hERes.data()); */
+
+        /* // CPU lapack */
+        /* // Compute eigenvalues of banded matrix */
+        /* rocblas_fill uplo = char2rocblas_fill('U'); */
+        /* int info; */
+        /* int worksize = n * n; */
+        /* std::vector<T> work(worksize, T(0.)); */
+        /* int worksize_real = n * n; */
+        /* std::vector<S> work_real(worksize_real, S(0.)); */
+        /* size_t size_W = size_D; */
+        /* host_strided_batch_vector<S> hW(size_W, 1, size_W, 1); */
+        /* cpu_syev_heev(rocblas_evect_none, uplo, n, hA.data(), lda, hW.data(), work.data(), worksize, */
+        /*         work_real.data(), worksize_real, &info); */
+
+        /* double err; */
+        /* *max_err = 0; */
+        /* // compare diagonal and off diagonal */
+        /* err = norm_error('F', 1, n, 1, hW.data(), hDRes.data()); */
+        /* *max_err = err > *max_err ? err : *max_err; */
+
+        /* if(std::isnan(err) || std::isinf(err)) */
+        /*     *max_err = NAN; */
+    }
 
     // execute computations
     // GPU lapack
     CHECK_ROCBLAS_ERROR(rocsolver_ormtr_sb2st(handle, n, nb, dA.data(), lda, dC.data(), ldc));
     CHECK_HIP_ERROR(hCRes.transfer_from(dC));
 
-    // CPU lapack
+    // Create thin wrappers of input matrices A and C
+    auto AWrap = HMat::Wrap(hA.data(), lda, n);
+    auto BWrap = HMat::Wrap(hB.data(), lda, n);
+    auto CWrap = HMat::Wrap(hCRes.data(), ldc, n);
+    auto DWrap = HMat::Convert(hDRes.data(), size_D, 1);
+    auto EWrap = HMat::Convert(hERes.data(), size_D - 1, 1);
 
-    double err;
-    *max_err = 0;
+    // We want the sub-blocks starting from row 0, col 0 and with size n x n of A and C
+    auto A = (*AWrap).block(BDesc().nrows(n).ncols(n));
+    auto B = (*BWrap).block(BDesc().nrows(n).ncols(n));
+    auto C = (*CWrap).block(BDesc().nrows(n).ncols(n));
+    auto D = (*DWrap).block(BDesc().nrows(n).ncols(1));
+    auto E = (*EWrap).block(BDesc().nrows(n - 1).ncols(1));
+    std::cout << "With bandwidth nb = " << nb << ", band matrix A [input] = \n";
+    A.print();
+    std::cout << "Compressed representation B [computed by sb2st] = \n";
+    B.print();
+    std::cout << std::endl;
+    std::cout << "Orthogonal matrix C [output] = \n";
+    C.print();
+    std::cout << std::endl;
+
+    // Check error of ormtr_sb2st
+
+    // Check ortoghonality of C
+    auto CE = adjoint(C) * C - HMat::Eye(n);
+    err = CE.norm();
+    *max_err = err > *max_err ? err : *max_err;
+
+    /* // Check residual error ||A - A'||/||A|| for reconstructed A' = C * T * C^* */
+    /* auto Tri = HMat::Zeros(n, n); */
+    /* Tri.diag(D); */
+    /* Tri.sub_diag(E); */
+    /* Tri.sup_diag(E); */
+    /* std::cout << "Tridiagonal matrix Tri [intermediate step produced by sb2st] = \n"; */
+    /* Tri.print(); */
+    /* std::cout << std::endl; */
+    /* auto Aprime = C * Tri * adjoint(C); */
+    /* err = (Aprime - A).norm()/A.norm(); */
+    /* *max_err = err > *max_err ? err : *max_err; */
 }
 
 template <typename T>
