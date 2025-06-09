@@ -179,6 +179,22 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
 
     // execute computations
     // GPU lapack
+    {
+        size_t size_C = n * ldc;
+        host_strided_batch_vector<T> hC(size_C, 1, size_C, 1);
+        for(rocblas_int i = 0; i < n; ++i)
+        {
+            for(rocblas_int j = 0; j < n; ++j)
+            {
+                if (i == j)
+                    hC[0][i + i * ldc] = T(1.);
+                else
+                    hC[0][i + j * ldc] = T(0.);
+            }
+        }
+        // now copy to the GPU
+        CHECK_HIP_ERROR(dC.transfer_from(hC));
+    }
     CHECK_ROCBLAS_ERROR(rocsolver_ormtr_sb2st(handle, n, nb, dA.data(), lda, dC.data(), ldc));
     CHECK_HIP_ERROR(hCRes.transfer_from(dC));
 
@@ -195,19 +211,19 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     auto C = (*CWrap).block(BDesc().nrows(n).ncols(n));
     auto D = (*DWrap).block(BDesc().nrows(n).ncols(1));
     auto E = (*EWrap).block(BDesc().nrows(n - 1).ncols(1));
-    std::cout << "With bandwidth nb = " << nb << ", band matrix [input]\n";
-    std::cout << "A = [\n";
-    A.print();
-    std::cout << "];\n" << std::endl;
-    std::cout << "Compressed representation [computed by sb2st]\n";
-    std::cout << "B = [\n";
-    B.print();
-    std::cout << "];\n" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Orthogonal matrix [output]\n";
-    std::cout << "C = [\n";
-    C.print();
-    std::cout << "];\n" << std::endl;
+    /* std::cout << "With bandwidth nb = " << nb << ", band matrix [input]\n"; */
+    /* std::cout << "A = [\n"; */
+    /* A.print(); */
+    /* std::cout << "];\n" << std::endl; */
+    /* std::cout << "Compressed representation [computed by sb2st]\n"; */
+    /* std::cout << "B = [\n"; */
+    /* B.print(); */
+    /* std::cout << "];\n" << std::endl; */
+    /* std::cout << std::endl; */
+    /* std::cout << "Orthogonal matrix [output]\n"; */
+    /* std::cout << "C = [\n"; */
+    /* C.print(); */
+    /* std::cout << "];\n" << std::endl; */
 
     // Check error of ormtr_sb2st
 
@@ -216,19 +232,19 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     err = CE.norm();
     *max_err = err > *max_err ? err : *max_err;
 
-    /* // Check residual error ||A - A'||/||A|| for reconstructed A' = C * T * C^* */
-    /* auto Tri = HMat::Zeros(n, n); */
-    /* Tri.diag(D); */
-    /* Tri.sub_diag(E); */
-    /* Tri.sup_diag(E); */
+    // Check residual error ||A - A'||/||A|| for reconstructed A' = C * T * C^*
+    auto Tri = HMat::Zeros(n, n);
+    Tri.diag(D);
+    Tri.sub_diag(E);
+    Tri.sup_diag(E);
     /* std::cout << "Tridiagonal matrix Tri [intermediate step produced by sb2st]\n"; */
     /* std::cout << "Tri = [\n"; */
     /* Tri.print(); */
     /* std::cout << "];\n" << std::endl; */
     /* std::cout << std::endl; */
-    /* auto Aprime = C * Tri * adjoint(C); */
-    /* err = (Aprime - A).norm()/A.norm(); */
-    /* *max_err = err > *max_err ? err : *max_err; */
+    auto Aprime = C * Tri * adjoint(C);
+    err = (Aprime - A).norm()/A.norm();
+    *max_err = err > *max_err ? err : *max_err;
 }
 
 template <typename T>
