@@ -195,14 +195,19 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     auto C = (*CWrap).block(BDesc().nrows(n).ncols(n));
     auto D = (*DWrap).block(BDesc().nrows(n).ncols(1));
     auto E = (*EWrap).block(BDesc().nrows(n - 1).ncols(1));
-    std::cout << "With bandwidth nb = " << nb << ", band matrix A [input] = \n";
+    std::cout << "With bandwidth nb = " << nb << ", band matrix [input]\n";
+    std::cout << "A = [\n";
     A.print();
-    std::cout << "Compressed representation B [computed by sb2st] = \n";
+    std::cout << "];\n" << std::endl;
+    std::cout << "Compressed representation [computed by sb2st]\n";
+    std::cout << "B = [\n";
     B.print();
+    std::cout << "];\n" << std::endl;
     std::cout << std::endl;
-    std::cout << "Orthogonal matrix C [output] = \n";
+    std::cout << "Orthogonal matrix [output]\n";
+    std::cout << "C = [\n";
     C.print();
-    std::cout << std::endl;
+    std::cout << "];\n" << std::endl;
 
     // Check error of ormtr_sb2st
 
@@ -216,8 +221,10 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     /* Tri.diag(D); */
     /* Tri.sub_diag(E); */
     /* Tri.sup_diag(E); */
-    /* std::cout << "Tridiagonal matrix Tri [intermediate step produced by sb2st] = \n"; */
+    /* std::cout << "Tridiagonal matrix Tri [intermediate step produced by sb2st]\n"; */
+    /* std::cout << "Tri = [\n"; */
     /* Tri.print(); */
+    /* std::cout << "];\n" << std::endl; */
     /* std::cout << std::endl; */
     /* auto Aprime = C * Tri * adjoint(C); */
     /* err = (Aprime - A).norm()/A.norm(); */
