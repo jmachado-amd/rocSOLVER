@@ -29,13 +29,13 @@
 
 ROCSOLVER_BEGIN_NAMESPACE
 
-template <typename T, typename U>
+template <typename T, typename TA, typename TC>
 rocblas_status rocsolver_ormtr_sb2st_impl(rocblas_handle handle,
                                           const rocblas_int n,
                                           const rocblas_int nb,
-                                          U A,
+                                          TA A,
                                           const rocblas_int lda,
-                                          U C,
+                                          TC C,
                                           const rocblas_int ldc)
 {
     ROCSOLVER_ENTER_TOP("ormtr_sb2st", "-n", n, "-nb", nb, "--lda", lda, "--ldc", ldc);
@@ -44,8 +44,8 @@ rocblas_status rocsolver_ormtr_sb2st_impl(rocblas_handle handle,
         return rocblas_status_invalid_handle;
 
     // working with unshifted arrays
-    rocblas_int shiftA = 0;
-    rocblas_int shiftC = 0;
+    rocblas_stride shiftA = 0;
+    rocblas_stride shiftC = 0;
 
     // normal (non-batched non-strided) execution
     rocblas_stride strideA = 0;
@@ -53,8 +53,14 @@ rocblas_status rocsolver_ormtr_sb2st_impl(rocblas_handle handle,
     rocblas_int batch_count = 1;
 
     // execution
-    return rocsolver_ormtr_sb2st_template<T>(handle, n, nb, A, shiftA, lda, strideA, C, shiftC, ldc,
-                                             strideC, batch_count);
+    return rocsolver_ormtr_sb2st_template<T, rocblas_int, rocblas_stride, TA, TC>(
+        handle, n, nb,
+
+        A, shiftA, lda, strideA,
+
+        C, shiftC, ldc, strideC,
+
+        batch_count);
 }
 
 ROCSOLVER_END_NAMESPACE
