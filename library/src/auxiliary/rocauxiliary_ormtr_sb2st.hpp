@@ -746,17 +746,17 @@ static void ormtr_sb2st_template(hipStream_t stream,
                                  I const noffdiag,
 
                                  TA A_,
-                                 I const shiftA,
+                                 Istride const shiftA,
                                  I const lda,
                                  Istride const strideA,
 
                                  TC C_,
-                                 I const shiftC,
+                                 Istride const shiftC,
                                  I const ldc,
                                  Istride const strideC,
 
                                  I const batch_count,
-                                 bool const use_cooperative_kernel = false)
+                                 bool const use_cooperative_kernel = true)
 {
     auto ceil = [](auto n, auto b) { return ((n - 1) / b + 1); };
 
@@ -807,19 +807,19 @@ static void ormtr_sb2st_template(hipStream_t stream,
     }
 }
 
-template <typename T, typename U>
+template <typename T, typename I, typename Istride, typename TA, typename TC>
 rocblas_status rocsolver_ormtr_sb2st_template(rocblas_handle handle,
-                                              const rocblas_int n,
-                                              const rocblas_int nb,
-                                              U A,
-                                              const rocblas_int shiftA,
-                                              const rocblas_int lda,
-                                              const rocblas_stride strideA,
-                                              U C,
-                                              const rocblas_int shiftC,
-                                              const rocblas_int ldc,
-                                              const rocblas_stride strideC,
-                                              const rocblas_int batch_count)
+                                              const I n,
+                                              const I nb,
+                                              TA A,
+                                              const Istride shiftA,
+                                              const I lda,
+                                              const Istride strideA,
+                                              TC C,
+                                              const Istride shiftC,
+                                              const I ldc,
+                                              const Istride strideC,
+                                              const I batch_count)
 {
     ROCSOLVER_ENTER("ormtr_sb2st", "n:", n, "nb:", nb, "shiftA:", shiftA, "lda:", lda,
                     "shiftC:", shiftC, "ldc:", ldc, "bc:", batch_count);
@@ -831,8 +831,13 @@ rocblas_status rocsolver_ormtr_sb2st_template(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
-    ormtr_sb2st_template<T>(stream, n, nb, A, shiftA, lda, strideA, C, shiftC, ldc, strideC,
-                            batch_count);
+    ormtr_sb2st_template<T, I, Istride, TA, TC>(stream, n, nb,
+
+                                                A, shiftA, lda, strideA,
+
+                                                C, shiftC, ldc, strideC,
+
+                                                batch_count);
 
     return rocblas_status_success;
 }
