@@ -36,13 +36,30 @@
 #include "common/misc/rocsolver_arguments.hpp"
 #include "common/misc/rocsolver_test.hpp"
 
-template <bool CPU, bool GPU, typename T, typename Ud, typename Uh>
+template <bool CPU, bool GPU, typename T, typename Ud, typename Sd, typename Uh, typename Sh>
 void ormtr_sb2st_initData(const rocblas_handle handle,
                           const rocblas_int n,
                           const rocblas_int nb,
                           Ud& dA,
                           const rocblas_int lda,
+                          Ud& dB,
+                          const rocblas_int ldb,
+                          Ud& dC,
+                          const rocblas_int ldc,
+                          Sd& dD,
+                          Sd& dE,
                           Uh& hA,
+                          Uh& hB,
+                          Uh& hC,
+                          Uh& hCRes,
+                          Sh& hDRes,
+                          Sh& hERes,
+/*                           Ud& dA, */
+/*                           const rocblas_int lda, */
+/*                           Uh& hA, */
+/*                           Ud& dC, */
+/*                           const rocblas_int ldc, */
+/*                           Uh& hC, */
                           const rocblas_int bc)
 {
     /* if(CPU) */
@@ -71,7 +88,7 @@ void ormtr_sb2st_initData(const rocblas_handle handle,
     {
         rocblas_init<T>(hA, true);
 
-        // scale A to avoid singularities
+        // scale A to make it full rank
         // transform A to a banded matrix
         for(rocblas_int b = 0; b < bc; ++b)
         {
@@ -97,26 +114,53 @@ void ormtr_sb2st_initData(const rocblas_handle handle,
                 }
             }
         }
+
+        for(rocblas_int i = 0; i < n; ++i)
+        {
+            for(rocblas_int j = 0; j < n; ++j)
+            {
+                if (i == j)
+                    hC[0][i + i * ldc] = T(1.);
+                else
+                    hC[0][i + j * ldc] = T(0.);
+            }
+        }
     }
 
     if(GPU)
     {
         // now copy to the GPU
         CHECK_HIP_ERROR(dA.transfer_from(hA));
+
+        // Create banded matrix with sb2st
+        CHECK_HIP_ERROR(dB.transfer_from(hA));
+        CHECK_ROCBLAS_ERROR(rocsolver_sb2st_hb2st(handle, n, nb, dB.data(), ldb, dD.data(), dE.data()));
+        CHECK_HIP_ERROR(hB.transfer_from(dB));
+        CHECK_HIP_ERROR(hDRes.transfer_from(dD));
+        CHECK_HIP_ERROR(hERes.transfer_from(dE));
+
+        CHECK_HIP_ERROR(dC.transfer_from(hC));
     }
 }
 
-template <typename T, typename Ud, typename Uh>
+template <typename T, typename Ud, typename Sd, typename Uh, typename Sh>
 void ormtr_sb2st_getError(const rocblas_handle handle,
                           const rocblas_int n,
                           const rocblas_int nb,
                           Ud& dA,
                           const rocblas_int lda,
+                          Ud& dB,
+                          const rocblas_int ldb,
                           Ud& dC,
                           const rocblas_int ldc,
+                          Sd& dD,
+                          Sd& dE,
                           Uh& hA,
+                          Uh& hB,
                           Uh& hC,
                           Uh& hCRes,
+                          Sh& hDRes,
+                          Sh& hERes,
                           double* max_err)
 {
     using S = decltype(std::real(T{}));
@@ -124,27 +168,26 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     using BDesc = typename HMat::BlockDescriptor;
 
     // input data initialization
-    ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, hA, 1);
+    ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, 1);
 
     // Create banded matrix with sb2st
     size_t size_D = n;
     size_t size_E = size_D; // Review size_E accross all code, for a single instance it is meant to be n - 1
-    device_strided_batch_vector<S> dD(size_D, 1, size_D, 1);
-    device_strided_batch_vector<S> dE(size_E, 1, size_E, 1);
-    CHECK_ROCBLAS_ERROR(rocsolver_sb2st_hb2st(handle, n, nb, dA.data(), lda, dD.data(), dE.data()));
+    /* device_strided_batch_vector<S> dD(size_D, 1, size_D, 1); */
+    /* device_strided_batch_vector<S> dE(size_E, 1, size_E, 1); */
 
     // Recover triangular matrix (more precisely, recover its diagnonal and sub-diagonal):
-    size_t size_Dres = size_D;
-    size_t size_Eres = size_E;
-    host_strided_batch_vector<S> hDRes(size_Dres, 1, size_Dres, 1);
-    host_strided_batch_vector<S> hERes(size_Eres, 1, size_Eres, 1);
-    CHECK_HIP_ERROR(hDRes.transfer_from(dD));
-    CHECK_HIP_ERROR(hERes.transfer_from(dE));
+    /* size_t size_Dres = size_D; */
+    /* size_t size_Eres = size_E; */
+    /* host_strided_batch_vector<S> hDRes(size_Dres, 1, size_Dres, 1); */
+    /* host_strided_batch_vector<S> hERes(size_Eres, 1, size_Eres, 1); */
+    /* CHECK_HIP_ERROR(hDRes.transfer_from(dD)); */
+    /* CHECK_HIP_ERROR(hERes.transfer_from(dE)); */
 
     // Copy band matrix
-    size_t size_A = lda * n;
-    host_strided_batch_vector<T> hB(size_A, 1, size_A, 1);
-    CHECK_HIP_ERROR(hB.transfer_from(dA));
+    /* size_t size_A = lda * n; */
+    /* host_strided_batch_vector<T> hB(size_A, 1, size_A, 1); */
+    /* CHECK_HIP_ERROR(hB.transfer_from(dA)); */
 
     double err;
     *max_err = 0.;
@@ -179,23 +222,23 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
 
     // execute computations
     // GPU lapack
-    {
-        size_t size_C = n * ldc;
-        host_strided_batch_vector<T> hC(size_C, 1, size_C, 1);
-        for(rocblas_int i = 0; i < n; ++i)
-        {
-            for(rocblas_int j = 0; j < n; ++j)
-            {
-                if (i == j)
-                    hC[0][i + i * ldc] = T(1.);
-                else
-                    hC[0][i + j * ldc] = T(0.);
-            }
-        }
-        // now copy to the GPU
-        CHECK_HIP_ERROR(dC.transfer_from(hC));
-    }
-    CHECK_ROCBLAS_ERROR(rocsolver_ormtr_sb2st(handle, n, nb, dA.data(), lda, dC.data(), ldc));
+    /* { */
+        /* size_t size_C = n * ldc; */
+        /* host_strided_batch_vector<T> hC(size_C, 1, size_C, 1); */
+        /* for(rocblas_int i = 0; i < n; ++i) */
+        /* { */
+        /*     for(rocblas_int j = 0; j < n; ++j) */
+        /*     { */
+        /*         if (i == j) */
+        /*             hC[0][i + i * ldc] = T(1.); */
+        /*         else */
+        /*             hC[0][i + j * ldc] = T(0.); */
+        /*     } */
+        /* } */
+        /* // now copy to the GPU */
+        /* CHECK_HIP_ERROR(dC.transfer_from(hC)); */
+    /* } */
+    CHECK_ROCBLAS_ERROR(rocsolver_ormtr_sb2st(handle, n, nb, dB.data(), lda, dC.data(), ldc));
     CHECK_HIP_ERROR(hCRes.transfer_from(dC));
 
     // Create thin wrappers of input matrices A and C
@@ -247,9 +290,85 @@ void ormtr_sb2st_getError(const rocblas_handle handle,
     *max_err = err > *max_err ? err : *max_err;
 }
 
+template <typename T, typename Ud, typename Sd, typename Uh, typename Sh>
+void ormtr_sb2st_getPerfData(const rocblas_handle handle,
+                             /* const rocblas_fill uplo, */
+                             const rocblas_int n,
+                             const rocblas_int nb,
+                             Ud& dA,
+                             const rocblas_int lda,
+                             Ud& dB,
+                             const rocblas_int ldb,
+                             Ud& dC,
+                             const rocblas_int ldc,
+                             Sd& dD,
+                             Sd& dE,
+                             Uh& hA,
+                             Uh& hB,
+                             Uh& hC,
+                             Uh& hCRes,
+                             Sh& hDRes,
+                             Sh& hERes,
+                             /* Ud& dA, */
+                             /* const rocblas_int lda, */
+                             /* Ud& dC, */
+                             /* const rocblas_int ldc, */
+                             double* gpu_time_used,
+                             double* cpu_time_used,
+                             const rocblas_int hot_calls,
+                             const int profile,
+                             const bool profile_kernels,
+                             const bool perf)
+{
+    if(!perf)
+    {
+        // cpu-lapack performance (only if not in perf mode)
+        *cpu_time_used = nan("");
+    }
+
+    /* ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, 1); */
+
+    // cold calls
+    for(int iter = 0; iter < 2; iter++)
+    {
+        ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, 1);
+
+        CHECK_ROCBLAS_ERROR(
+                rocsolver_ormtr_sb2st(handle, n, nb, dB.data(), lda, dC.data(), ldc));
+    }
+
+    // gpu-lapack performance
+    hipStream_t stream;
+    CHECK_ROCBLAS_ERROR(rocblas_get_stream(handle, &stream));
+    double start;
+
+    if(profile > 0)
+    {
+        if(profile_kernels)
+            rocsolver_log_set_layer_mode(rocblas_layer_mode_log_profile
+                                         | rocblas_layer_mode_ex_log_kernel);
+        else
+            rocsolver_log_set_layer_mode(rocblas_layer_mode_log_profile);
+        rocsolver_log_set_max_levels(profile);
+    }
+
+    for(rocblas_int iter = 0; iter < hot_calls; iter++)
+    {
+        ormtr_sb2st_initData<true, true, T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, 1);
+
+        start = get_time_us_sync(stream);
+        CHECK_ROCBLAS_ERROR(
+                rocsolver_ormtr_sb2st(handle, n, nb, dB.data(), lda, dC.data(), ldc));
+        *gpu_time_used += get_time_us_sync(stream) - start;
+    }
+    *gpu_time_used /= hot_calls;
+}
+
 template <typename T>
 void testing_ormtr_sb2st(Arguments& argus)
 {
+    using S = decltype(std::real(T{}));
+
     // get arguments
     rocblas_local_handle handle;
     rocblas_int n = argus.get<rocblas_int>("n");
@@ -260,8 +379,13 @@ void testing_ormtr_sb2st(Arguments& argus)
     rocblas_int hot_calls = argus.iters;
 
     // determine sizes
+    rocblas_int ldb = lda;
     size_t size_A = lda * n;
     size_t size_C = ldc * n;
+    size_t size_D = n;
+    size_t size_E = size_D; // Review size_E accross all code, for a single instance it is meant to be n - 1
+    size_t size_Dres = size_D;
+    size_t size_Eres = size_E;
     double max_error = 0, gpu_time_used = 0, cpu_time_used = 0;
 
     size_t size_Cres = (argus.unit_check || argus.norm_check) ? size_C : 0;
@@ -294,10 +418,16 @@ void testing_ormtr_sb2st(Arguments& argus)
 
     // memory allocations
     host_strided_batch_vector<T> hA(size_A, 1, size_A, 1);
+    host_strided_batch_vector<T> hB(size_A, 1, size_A, 1);
     host_strided_batch_vector<T> hC(size_C, 1, size_C, 1);
     host_strided_batch_vector<T> hCRes(size_Cres, 1, size_Cres, 1);
+    host_strided_batch_vector<S> hDRes(size_Dres, 1, size_Dres, 1);
+    host_strided_batch_vector<S> hERes(size_Eres, 1, size_Eres, 1);
     device_strided_batch_vector<T> dA(size_A, 1, size_A, 1);
+    device_strided_batch_vector<T> dB(size_A, 1, size_A, 1);
     device_strided_batch_vector<T> dC(size_C, 1, size_C, 1);
+    device_strided_batch_vector<S> dD(size_D, 1, size_D, 1);
+    device_strided_batch_vector<S> dE(size_E, 1, size_E, 1);
     if(size_A)
         CHECK_HIP_ERROR(dA.memcheck());
     if(size_C)
@@ -316,12 +446,12 @@ void testing_ormtr_sb2st(Arguments& argus)
 
     // check computations
     if(argus.unit_check || argus.norm_check)
-        ormtr_sb2st_getError<T>(handle, n, nb, dA, lda, dC, ldc, hA, hC, hCRes, &max_error);
+        ormtr_sb2st_getError<T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, &max_error);
 
-    // // collect performance data
-    // if(argus.timing && hot_calls > 0)
-    //     ormtr_sb2st_getPerfData<T>(handle, &gpu_time_used, &cpu_time_used, hot_calls, argus.profile,
-    //                          argus.profile_kernels, argus.perf);
+    // collect performance data
+    if(argus.timing && hot_calls > 0)
+        ormtr_sb2st_getPerfData<T>(handle, n, nb, dA, lda, dB, ldb, dC, ldc, dD, dE, hA, hB, hC, hCRes, hDRes, hERes, &gpu_time_used, &cpu_time_used, hot_calls, argus.profile,
+                argus.profile_kernels, argus.perf);
 
     // validate results for rocsolver-test
     if(argus.unit_check)

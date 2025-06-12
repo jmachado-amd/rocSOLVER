@@ -756,7 +756,7 @@ static void ormtr_sb2st_template(hipStream_t stream,
                                  Istride const strideC,
 
                                  I const batch_count,
-                                 bool const use_cooperative_kernel = true)
+                                 bool const use_cooperative_kernel = false)
 {
     auto ceil = [](auto n, auto b) { return ((n - 1) / b + 1); };
 
