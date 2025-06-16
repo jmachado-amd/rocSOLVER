@@ -1537,9 +1537,12 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                     // 'tmpd' will be updated with the distances D - lambda_i.
                     // deflated values are not changed.
                     rocblas_int linfo;
-                    linfo = slaed4(dd, cc, tmpd + j * n, zz, std::abs(p), ev[j], eps, ssfmin,
-                                   MAXITERS);
+                    linfo = slaed4(dd, cc, tmpd + j * n, zz, std::abs(p), ev[j]);
 
+                    if(std::isnan(ev[j]))
+                    {
+                        printf("Eigenvalue %d at pos %d is NaN\n", j, cc);
+                    }
                     if(p < 0)
                         ev[j] *= -1;
                 }
@@ -1556,13 +1559,10 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                     if(mask[j] == 1)
                     {
                         valg = tmpd[i + j * n];
-                        if(p > 0)
-                            valf *= (per[i] == j) ? valg : valg / (diag[per[i]] - diag[j]);
-                        else
-                            valf *= (per[i] == j) ? valg : -valg / (diag[per[i]] - diag[j]);
+                        valf *= (per[i] == j) ? valg : valg / (diag[per[i]] - diag[j]);
                     }
                 }
-                valf = sqrt(-valf);
+                valf = sqrt(std::abs(valf));
                 zz[i] = zz[i] < 0 ? -valf : valf;
             }
             /* ----------------------------------------------------------------- */
@@ -2267,6 +2267,55 @@ rocblas_status rocsolver_stedc_argCheck(rocblas_handle handle,
     return rocblas_status_continue;
 }
 
+template <typename T>
+__global__ void find_nan(T* mem, int n, int* result)
+{
+    if(threadIdx.x == 0)
+    {
+        *result = 0;
+    }
+    __syncthreads();
+
+    for(int i = threadIdx.x; i < n; i += blockDim.x * gridDim.x)
+    {
+        if constexpr(!std::is_pointer_v<T> && !rocblas_is_complex<T>)
+        {
+            if(isinf(mem[i]) || isnan(mem[i]) || (mem[i] != mem[i]))
+            {
+                printf("\n!!! Error of type: %f; at mem pos: %p!!!\n", mem[i], (void*)(mem + i));
+                *result = 1;
+            }
+        }
+        if((mem[i] != mem[i]))
+        {
+            printf("\n!!! Found NaN at mem pos: %p!!!\n", (void*)(mem + i));
+            *result = 1;
+        }
+    }
+}
+
+template <typename T>
+bool find_nan(T* mem, int size, /* auto stream,*/ std::string msg)
+{
+    int *d_result, result;
+    HIP_CHECK(hipMalloc((void**)&d_result, sizeof(int)));
+    HIP_CHECK(hipMemset((void*)d_result, 0, sizeof(int)));
+    std::cout << "Check [" << msg << "]:";
+
+    find_nan<<<dim3(1, 1, 1), dim3(std::min(size, 1024), 1, 1) /*, 0, stream*/>>>(mem, size,
+                                                                                  d_result);
+    HIP_CHECK(hipDeviceSynchronize());
+
+    HIP_CHECK(hipMemcpy(&result, (void*)d_result, sizeof(int), hipMemcpyDeviceToHost));
+    HIP_CHECK(hipFree((void*)d_result));
+    HIP_CHECK(hipDeviceSynchronize());
+
+    bool status = (result == 0);
+    std::cout << (status ? std::string(" PASS") : std::string(" FAIL")) << std::endl;
+
+    return status;
+}
+
 //--------------------------------------------------------------------------------------//
 /** STEDC templated function **/
 template <bool BATCHED, bool STRIDED, typename T, typename S, typename U>
@@ -2405,6 +2454,7 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
         for(rocblas_int k = 0; k < maxlevs; ++k)
         {
             // a. prepare secular equations
+            /* printf("At level k = %d\n", k); */
             rocblas_int numgrps2 = 1 << (maxlevs - 1 - k);
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergePrepare_kernel<rocsolver_stedc_mode_qr, S>),
                                     dim3(numgrps2, STEDC_NUM_SPLIT_BLKS, batch_count),
@@ -2413,10 +2463,16 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
                                     eps);
 
             // b. solve to find merged eigen values
+            /* printf("Before mergeValues.\n"); */
+            /* find_nan(tmpz, 2*n, "tmpz"); */
+            /* find_nan(tempgemm, 2*n*n, "tempgemm"); */
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeValues_kernel<rocsolver_stedc_mode_qr, S>),
                                     dim3(numgrps2, STEDC_NUM_SPLIT_BLKS, batch_count),
                                     dim3(STEDC_BDIM), 0, stream, k, n, D + shiftD, strideD,
                                     E + shiftE, strideE, tmpz, tempgemm, splits, eps, ssfmin, ssfmax);
+            /* printf("After mergeValues, before mergeVectors.\n"); */
+            /* find_nan(tmpz, 2*n, "tmpz"); */
+            /* find_nan(tempgemm, 2*n*n, "tempgemm"); */
 
             // c. find merged eigen vectors
             ROCSOLVER_LAUNCH_KERNEL(
@@ -2424,6 +2480,9 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
                 dim3(numgrps3, STEDC_NUM_SPLIT_BLKS, batch_count), dim3(STEDC_BDIM), lmemsize3,
                 stream, k, n, D + shiftD, strideD, E + shiftE, strideE, V, 0, ldv, strideV, tmpz,
                 tempgemm, splits);
+            /* printf("After mergeVectors.\n"); */
+            /* find_nan(tmpz, 2*n, "tmpz"); */
+            /* find_nan(tempgemm, 2*n*n, "tempgemm"); */
 
             if(STEDC_EXTERNAL_GEMM)
             {
@@ -2478,6 +2537,10 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
 
         rocblas_set_pointer_mode(handle, old_mode);
     }
+    /* printf("After main loop.\n"); */
+    /* find_nan(D, n, "D (eigenvalues)"); */
+    /* find_nan(C, n*ldc, "C (eigenvectors)"); */
+    /* printf("End rocsolver_stedc_template().\n"); */
 
     return rocblas_status_success;
 }
