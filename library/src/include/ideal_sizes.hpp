@@ -269,7 +269,7 @@
 /*! \brief Determines the number of split blocks (independent blocks) of a tridiagonal matrix that
     are analyzed in parallel with the divide & conquer method. */
 #ifndef STEDC_NUM_SPLIT_BLKS
-#define STEDC_NUM_SPLIT_BLKS 8
+#define STEDC_NUM_SPLIT_BLKS 1
 #endif
 
 /************************** potf2/potrf ***************************************

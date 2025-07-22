@@ -997,7 +997,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                               S* tmpzA,
                               S* vecsA,
                               rocblas_int* splitsA,
-                              const S eps)
+                              const S eps,
+                              const double wall_clock_rate = 1.)
 {
     // threads and groups indices
     /* --------------------------------------------------- */
@@ -1010,6 +1011,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
     // thread id
     rocblas_int tidb = hipThreadIdx_x;
     rocblas_int tid, tx;
+    rocblas_int tt = tidb + mid * blockDim.x + sid * blockDim.x * gridDim.x
+        + bid * blockDim.x * gridDim.x * gridDim.y;
     /* --------------------------------------------------- */
 
     // select batch instance to work with
@@ -1073,6 +1076,12 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
 
     // work with STEDC_NUM_SPLIT_BLKS split blocks in parallel
     /* --------------------------------------------------- */
+    volatile double complete_cycle, preamble_cycle, organize_non_deflated_cycle,
+        deflate_repeated_cycle;
+    if(tt == 0)
+    {
+        preamble_cycle = complete_cycle = wall_clock64();
+    }
     for(int kb = sid; kb < nb; kb += STEDC_NUM_SPLIT_BLKS)
     {
         __syncthreads();
@@ -1192,6 +1201,13 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                     idd[tx] = 1;
             }
             __syncthreads();
+            if(tt == 0)
+            {
+                double wclock = wall_clock64();
+                deflate_repeated_cycle = wclock;
+                preamble_cycle = (wclock - preamble_cycle) / wall_clock_rate;
+            }
+            __syncthreads();
 
             // now deflate repeated values
             rocblas_int sz_even, sz_half, base, top, com;
@@ -1252,6 +1268,14 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                     __syncthreads();
                 }
             }
+            __syncthreads();
+            if(tt == 0)
+            {
+                double wclock = wall_clock64();
+                organize_non_deflated_cycle = wclock;
+                deflate_repeated_cycle = (wclock - deflate_repeated_cycle) / wall_clock_rate;
+            }
+            __syncthreads();
             /* ----------------------------------------------------------------- */
 
             // 3d.1. Organize data with non-deflated values to prepare secular equation
@@ -1285,6 +1309,21 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
             }
             /* ----------------------------------------------------------------- */
         }
+        __syncthreads();
+        if(tt == 0)
+        {
+            double wclock = wall_clock64();
+            organize_non_deflated_cycle = (wclock - organize_non_deflated_cycle) / wall_clock_rate;
+            complete_cycle = (wclock - complete_cycle) / wall_clock_rate;
+            printf("+++ +++ Preamble stedc_mergePrepare_kernel: %f milli-seconds\n", preamble_cycle);
+            printf(
+                "+++ +++ Deflate equal eigenvalues stedc_mergePrepare_kernel: %f milli-seconds\n",
+                deflate_repeated_cycle);
+            printf("+++ +++ Organize non-deflated eigenvalues stedc_mergePrepare_kernel: %f "
+                   "milli-seconds\n",
+                   organize_non_deflated_cycle);
+            printf("+++ +++ Wall time stedc_mergePrepare_kernel: %f milli-seconds\n", complete_cycle);
+        }
     }
 }
 
@@ -1314,7 +1353,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                              rocblas_int* splitsA,
                              const S eps,
                              const S ssfmin,
-                             const S ssfmax)
+                             const S ssfmax,
+                             double wall_clock_rate = 1.)
 {
     // threads and groups indices
     /* --------------------------------------------------- */
@@ -1327,6 +1367,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
     // thread id
     rocblas_int tidb = hipThreadIdx_x;
     rocblas_int tid;
+    rocblas_int tt = tidb + mid * blockDim.x + sid * blockDim.x * gridDim.x
+        + bid * blockDim.x * gridDim.x * gridDim.y;
     /* --------------------------------------------------- */
 
     // select batch instance to work with
@@ -1379,6 +1421,13 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
 
     // work with STEDC_NUM_SPLIT_BLKS split blocks in parallel
     /* --------------------------------------------------- */
+    volatile double complete, preamble, solving, sorting, lowner;
+    if(tt == 0)
+    {
+        double wclock = wall_clock64();
+        complete = wclock / wall_clock_rate;
+        preamble = wclock / wall_clock_rate;
+    }
     for(int kb = sid; kb < nb; kb += STEDC_NUM_SPLIT_BLKS)
     {
         __syncthreads();
@@ -1401,6 +1450,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
         /* ----------------------------------------------------------------- */
         // Work with merges on level k. A thread-group works with two leaves in the merge tree;
         // all threads work together to solve the secular equation.
+        rocblas_int dd = 0;
         if(mid < tn)
         {
             rocblas_int iam, sz, bdm, dim;
@@ -1454,13 +1504,20 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
             rocblas_int* per = pers + in;
 
             // find degree of secular equation
-            rocblas_int dd = 0;
             for(int i = 0; i < sz; ++i)
             {
                 if(mask[i] == 1)
                     dd++;
             }
 
+            __syncthreads();
+            if(tt == 0)
+            {
+                double wclock = wall_clock64();
+                sorting = wclock / wall_clock_rate;
+                preamble = wclock / wall_clock_rate - preamble;
+            }
+            __syncthreads();
             // Order the elements in tmpd and zz using a simple parallel selection/bubble sort.
             // This will allow us to find initial intervals for eigenvalue guesses
             for(int i = 0; i < dd; i++)
@@ -1487,6 +1544,14 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                 for(int j = i + n; j < i + sz * n; j += n)
                     tmpd[j] = tmpd[i];
             }
+            __syncthreads();
+            if(tt == 0)
+            {
+                double wclock = wall_clock64();
+                sorting = wclock / wall_clock_rate - sorting;
+                solving = wclock / wall_clock_rate;
+            }
+            __syncthreads();
 
             // finally copy over all diagonal elements in ev. ev will be overwritten
             // by the new computed eigenvalues of the merged block
@@ -1541,6 +1606,13 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                 }
             }
             __syncthreads();
+            if(tt == 0)
+            {
+                double wclock = wall_clock64();
+                solving = wclock / wall_clock_rate - solving;
+                lowner = wclock / wall_clock_rate;
+            }
+            __syncthreads();
 
             // Re-scale vector Z to avoid bad numerics when an eigenvalue
             // is too close to a pole
@@ -1559,6 +1631,21 @@ ROCSOLVER_KERNEL void __launch_bounds__(STEDC_BDIM)
                 zz[i] = zz[i] < 0 ? -valf : valf;
             }
             /* ----------------------------------------------------------------- */
+            __syncthreads();
+        }
+        if(tt == 0)
+        {
+            double wclock = wall_clock64();
+            lowner = wclock / wall_clock_rate - lowner;
+            complete = wclock / wall_clock_rate - complete;
+            printf("+++ +++ Preamble stedc_mergeValues_kernel: %f milli-seconds\n", preamble);
+            printf("+++ +++ Sorting eigenvalues stedc_mergeValues_kernel: %f milli-seconds\n",
+                   sorting);
+            printf("+++ +++ Solving secular equations (%d eigenvalues) stedc_mergeValues_kernel: "
+                   "%f milli-seconds\n",
+                   dd, solving);
+            printf("+++ +++ Lowner step stedc_mergeValues_kernel: %f milli-seconds\n", lowner);
+            printf("+++ +++ Wall time stedc_mergeValues_kernel: %f milli-seconds\n", complete);
         }
     }
 }
@@ -2311,6 +2398,7 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
     if(n <= 1)
         return rocblas_status_success;
 
+    printf("Inside rocsolver_stedc_template()\n");
     // if no eigenvectors required with the classic solver, use sterf
     if(evect == rocblas_evect_none)
     {
@@ -2331,6 +2419,10 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
         // initialize temporary array for vector updates
         size_t size_tempgemm = sizeof(S) * 2 * n * n * batch_count;
         HIP_CHECK(hipMemsetAsync((void*)tempgemm, 0, size_tempgemm, stream));
+        int wall_clock_rate = 1.;
+        int device_id;
+        HIP_CHECK(hipGetDevice(&device_id));
+        HIP_CHECK(hipDeviceGetAttribute(&wall_clock_rate, hipDeviceAttributeWallClockRate, device_id));
 
         // everything must be executed with scalars on the host
         rocblas_pointer_mode old_mode;
@@ -2397,26 +2489,38 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
         // reused.
         for(rocblas_int k = 0; k < maxlevs; ++k)
         {
+            printf("--- At level k = %d of the divide-and-conquer process\n", k);
             // a. prepare secular equations
             rocblas_int numgrps2 = 1 << (maxlevs - 1 - k);
+
+            printf("+++ Calling stedc_mergePrepare_kernel\n");
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergePrepare_kernel<rocsolver_stedc_mode_qr, S>),
                                     dim3(numgrps2, STEDC_NUM_SPLIT_BLKS, batch_count),
                                     dim3(STEDC_BDIM), lmemsize1, stream, k, n, D + shiftD, strideD,
                                     E + shiftE, strideE, V, 0, ldv, strideV, tmpz, tempgemm, splits,
-                                    eps);
+                                    eps, double(wall_clock_rate));
+            HIP_CHECK(hipDeviceSynchronize());
+            printf("\n");
 
             // b. solve to find merged eigen values
+            printf("+++ Calling stedc_mergeValues_kernel\n");
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeValues_kernel<rocsolver_stedc_mode_qr, S>),
                                     dim3(numgrps2, STEDC_NUM_SPLIT_BLKS, batch_count),
                                     dim3(STEDC_BDIM), 0, stream, k, n, D + shiftD, strideD,
-                                    E + shiftE, strideE, tmpz, tempgemm, splits, eps, ssfmin, ssfmax);
+                                    E + shiftE, strideE, tmpz, tempgemm, splits, eps, ssfmin,
+                                    ssfmax, double(wall_clock_rate));
+            HIP_CHECK(hipDeviceSynchronize());
+            printf("\n");
 
             // c. find merged eigen vectors
+            printf("+++ Calling stedc_mergeVectors_kernel\n");
             ROCSOLVER_LAUNCH_KERNEL(
                 (stedc_mergeVectors_kernel<rocsolver_stedc_mode_qr, STEDC_EXTERNAL_GEMM, S>),
                 dim3(numgrps3, STEDC_NUM_SPLIT_BLKS, batch_count), dim3(STEDC_BDIM), lmemsize3,
                 stream, k, n, D + shiftD, strideD, E + shiftE, strideE, V, 0, ldv, strideV, tmpz,
                 tempgemm, splits);
+            HIP_CHECK(hipDeviceSynchronize());
+            printf("\n");
 
             if(STEDC_EXTERNAL_GEMM)
             {
@@ -2435,6 +2539,8 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
                                     dim3(numgrps3, STEDC_NUM_SPLIT_BLKS, batch_count),
                                     dim3(STEDC_BDIM), lmemsize3, stream, k, n, D + shiftD, strideD,
                                     V, 0, ldv, strideV, tmpz, tempgemm, splits);
+
+            printf("\n");
         }
 
         // 4. update and sort
