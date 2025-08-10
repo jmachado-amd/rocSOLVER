@@ -26,6 +26,7 @@
  * *************************************************************************/
 
 #include "rocauxiliary_stedc.hpp"
+#include "rocauxiliary_stedc2.hpp"
 
 ROCSOLVER_BEGIN_NAMESPACE
 
@@ -95,7 +96,7 @@ rocblas_status rocsolver_stedc_impl(rocblas_handle handle,
     workArr = mem[5];
 
     // execution
-    return rocsolver_stedc_template<false, false, T>(
+    return experimental::rocsolver_stedc_template<false, false, T>(
         handle, evect, n, D, shiftD, strideD, E, shiftE, strideE, C, shiftC, ldc, strideC, info,
         batch_count, work_stack, (S*)tempvect, (S*)tempgemm, (S*)tmpz, (rocblas_int*)splits_map,
         (S**)workArr);

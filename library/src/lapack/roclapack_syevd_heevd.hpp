@@ -34,6 +34,7 @@
 
 #include "auxiliary/rocauxiliary_ormtr_unmtr.hpp"
 #include "auxiliary/rocauxiliary_stedc.hpp"
+#include "auxiliary/rocauxiliary_stedc2.hpp"
 #include "auxiliary/rocauxiliary_sterf.hpp"
 #include "rocblas.hpp"
 #include "roclapack_syev_heev.hpp"
@@ -41,6 +42,7 @@
 #include "rocsolver/rocsolver.h"
 
 ROCSOLVER_BEGIN_NAMESPACE
+
 
 /** Helper to calculate workspace sizes **/
 template <bool BATCHED, typename T, typename S>
@@ -319,9 +321,18 @@ rocblas_status rocsolver_syevd_heevd_template(rocblas_handle handle,
         const rocblas_int ldw = n;
         const rocblas_stride strideW = n * n;
 
-        rocsolver_stedc_template<false, ISBATCHED, T>(
-            handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
-            strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        if (ISBATCHED)
+        {
+            rocsolver_stedc_template<false, false, T>(
+                    handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
+                    strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        }
+        else
+        {
+            experimental::rocsolver_stedc_template<false, ISBATCHED, T>(
+                    handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
+                    strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        }
 
         // update the eigenvectors (if applicable)
         if(evect == rocblas_evect_original)
@@ -421,9 +432,18 @@ rocblas_status rocsolver_syevd_heevd_template(rocblas_handle handle,
         const rocblas_int ldw = n;
         const rocblas_stride strideW = n * n;
 
-        rocsolver_stedc_template<false, ISBATCHED, T>(
-            handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
-            strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        if (ISBATCHED)
+        {
+            rocsolver_stedc_template<false, ISBATCHED, T>(
+                    handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
+                    strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        }
+        else
+        {
+            experimental::rocsolver_stedc_template<false, ISBATCHED, T>(
+                    handle, rocblas_evect_tridiagonal, n, D, 0, strideD, E, 0, strideE, tmptau_W, 0, ldw,
+                    strideW, info, batch_count, work3, (S*)work2, (S*)work1, tmpz, splits, (S**)workArr);
+        }
 
         // update the eigenvectors (if applicable)
         if(evect == rocblas_evect_original)
