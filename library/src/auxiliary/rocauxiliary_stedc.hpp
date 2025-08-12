@@ -40,6 +40,9 @@
 
 #include <algorithm>
 
+static bool rocsolver_debug_messages = std::getenv("ROCSOLVER_DEBUG_MESSAGES") != nullptr;
+static bool rocsolver_profile_messages = true; // std::getenv("ROCSOLVER_PROFILE_MESSAGES") != nullptr;
+
 ROCSOLVER_BEGIN_NAMESPACE
 
 #define STEDC_BDIM 512  // Number of threads per thread-block used in main stedc kernels
@@ -1336,9 +1339,16 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
     // otherwise use divide and conquer algorithm:
     else
     {
+        hipEvent_t setup_events[4];
 
+        for(int i = 0; i < 4; i++)
+            HIP_CHECK(hipEventCreate(&setup_events[i]));
+
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"D in",1,n,D,1);
 //print_device_matrix(std::cout,"E in",1,n-1,E,1);
+}
 
         // initialize temporary array for vector updates
         size_t size_tempgemm = sizeof(S) * 2 * n * n * batch_count;
@@ -1375,28 +1385,51 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
             strideV = (rocblas_int)(sizeof(T) / sizeof(S)) * strideC;
         }
         rocblas_int groupsn = (n - 1) / BS2 + 1;
+        HIP_CHECK(hipEventRecord(setup_events[0], stream));
         ROCSOLVER_LAUNCH_KERNEL(init_ident<S>, dim3(groupsn, groupsn, batch_count), dim3(BS2, BS2),
                                 0, stream, n, n, V, 0, ldv, strideV);
 
         // 1. divide phase
         //-----------------------------
         rocblas_int groups = (batch_count - 1) / STEDC_BDIM + 1;
+        HIP_CHECK(hipEventRecord(setup_events[1], stream));
         ROCSOLVER_LAUNCH_KERNEL((stedc_divide_kernel<S>),
                                 dim3(groups), dim3(STEDC_BDIM), 0, stream, levs, blks, n, D + shiftD,
                                 strideD, E + shiftE, strideE, batch_count, splits);
 
         // 2. solve phase
         //-----------------------------
+        HIP_CHECK(hipEventRecord(setup_events[2], stream));
         ROCSOLVER_LAUNCH_KERNEL((stedc_solve_kernel<S>),
                                 dim3(blks, batch_count), dim3(WAVEFRONT), 0, stream, levs, blks, 
                                 n, D + shiftD, strideD, E + shiftE, strideE, 
                                 V, 0, ldv, strideV, info, (S*)work_stack, splits, 
                                 eps, ssfmin, ssfmax);
+        HIP_CHECK(hipEventRecord(setup_events[3], stream));
 
+        HIP_CHECK(hipStreamSynchronize(stream));
+
+        float elapsed[3];
+        for(int i = 0; i < 3; i++)
+            HIP_CHECK(hipEventElapsedTime(&elapsed[i], setup_events[i], setup_events[i+1]));
+        for(int i = 0; i < 4; i++)
+            HIP_CHECK(hipEventDestroy(setup_events[i]));
+
+if(rocsolver_profile_messages)
+{
+        printf("STEDC Kernel Timings:\n"
+               "\tinit_ident         : %f\n"
+               "\tstedc_divide_kernel: %f\n"
+               "\tstedc_solve_kernel : %f\n",
+                elapsed[0], elapsed[1], elapsed[2]);
+}
+
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"D at leaves",1,n,D,1);
 //print_device_matrix(std::cout,"E at leaves",1,n-1,E,1);
 //print_device_matrix(std::cout,"V at leaves",n,n,V,ldv);
-
+}
 
         // 3. merge phase
         //----------------
@@ -1407,28 +1440,43 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
 //        size_t lmemsize3 = sizeof(S) * STEDC_BDIM;
 //        rocblas_int numgrps3 = ((n - 1) / blks + 1) * blks;
 
+
         // launch merge for level k
         for(rocblas_int k = 0; k < levs; ++k) ////////////////////////////////////////////////////////////////////////////// k < levs
         {
+            hipEvent_t merge_events[9];            
+            for(int i = 0; i < 9; i++)
+                HIP_CHECK(hipEventCreate(&merge_events[i]));
+
             // a. prepare secular equations
 
+if (rocsolver_debug_messages)
+{
 //printf("start merge at level k = %d\n",k);
 //printf("------------------------------------------\n\n");
 //print_device_matrix(std::cout,"ns",1,n,splits+n,1);
 //print_device_matrix(std::cout,"ps",1,n,splits+2*n,1);
 //print_device_matrix(std::cout,"D to be sorted",1,n,D,1);
+}
 
+            HIP_CHECK(hipEventRecord(merge_events[0], stream));
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeSort_kernel<S>), dim3(numgrps, batch_count),
                                     dim3(STEDC_BDIM), 0, stream, levs, blks, k, n, D + shiftD, strideD,
                                     V, 0, ldv, strideV, tmpz, tempgemm, splits);
 
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"pers",1,n,splits+4*n,1);
 //print_device_matrix(std::cout,"vecs after sort",n,n,tempgemm,n);
 //print_device_matrix(std::cout,"temps after sort",n,n,tempgemm+n*n,n);
+}
             
+            HIP_CHECK(hipEventRecord(merge_events[1], stream));
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeDeflate_kernel<S>), dim3(1, batch_count),
                                     dim3(numthds), lmemsize, stream, levs, blks, k, n, E + shiftE, strideE,
                                     tmpz, tempgemm, splits, eps);
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"size of non-deflated",1,blks,splits+5*n,1);
 //print_device_matrix(std::cout,"idrf",1,n,splits+3*n,1);
 //print_device_matrix(std::cout,"evrf",1,n,tmpz+n,1);
@@ -1436,48 +1484,64 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
 //print_device_matrix(std::cout,"dcount",1,n,splits,1);
 //print_device_matrix(std::cout,"vecs after deflate",n,n,tempgemm,n);
 //print_device_matrix(std::cout,"temps after deflate",n,n,tempgemm+n*n,n);
+}
 
+            HIP_CHECK(hipEventRecord(merge_events[2], stream));
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeRotate_kernel<S>), dim3(n, batch_count),
                                     dim3(STEDC_BDIM),
                                     0, stream, levs, blks, k, n,
                                     V, 0, ldv, strideV, tmpz, tempgemm, splits);
 
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"V after rotate",n,n,V,ldv);            
+}
 
 
             // b. solve secular eq to find merged eigenvalues
+            HIP_CHECK(hipEventRecord(merge_events[3], stream));
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeValues_kernel<S>), dim3(numgrps, batch_count),
                                     dim3(STEDC_BDIM), 0, stream, levs, blks, k, n, E + shiftE, strideE,
                                     tmpz, tempgemm, splits, eps, ssfmin, ssfmax);
 
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"new evrf",1,n,tmpz+n,1);
 //print_device_matrix(std::cout,"vecs after values",n,n,tempgemm,n);
 //print_device_matrix(std::cout,"temps after values",n,n,tempgemm+n*n,n);
+}
 
             // c. find merged eigenvectors
+            HIP_CHECK(hipEventRecord(merge_events[4], stream));
             ROCSOLVER_LAUNCH_KERNEL(
                 (stedc_mergeVectors_kernel<STEDC_EXTERNAL_GEMM, S>),
                 dim3(n, batch_count), dim3(STEDC_BDIM), 0, stream, 
                 levs, blks, k, n, D + shiftD, strideD, E + shiftE, strideE, V, 0, ldv, strideV, 
                 tmpz, tempgemm, splits);
+
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"vecs after vectors",n,n,tempgemm,n);
 //print_device_matrix(std::cout,"temps after vectors",n,n,tempgemm+n*n,n);
 //print_device_matrix(std::cout,"new evrf ordered",1,n,tmpz,1);
 //print_device_matrix(std::cout,"final order",1,n,splits,1);
+}
 
-            if(STEDC_EXTERNAL_GEMM)
+            /* if(STEDC_EXTERNAL_GEMM) */
             {
                 // using external gemms with padded matrices to do the vector update
                 // One single full gemm of size n x n x n merges all the blocks in the level
                 // TODO: using macro STEDC_EXTERNAL_GEMM = true for now. In the future we can pass
                 // STEDC_EXTERNAL_GEMM at run time to switch between internal vector updates and
                 // external gemm based updates.
+                HIP_CHECK(hipEventRecord(merge_events[5], stream));
                 ROCSOLVER_LAUNCH_KERNEL(stedc_mergePrepgemm_kernel<S>,
                 dim3(groupsn, groupsn, batch_count), dim3(BS2,BS2), 0, stream,
                 levs, blks, k, n, E + shiftE, strideE, tmpz, tempgemm, splits);
 
 //print_device_matrix(std::cout,"temps after prepgem",n,n,tempgemm+n*n,n);
 
+                HIP_CHECK(hipEventRecord(merge_events[6], stream));
                 rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_none, n, n, n,
                                &one, V, 0, ldv, strideV, tempgemm, n * n, n, 2 * n * n, &zero,
                                tempgemm, 0, n, 2 * n * n, batch_count, workArr);
@@ -1485,12 +1549,40 @@ rocblas_status rocsolver_stedc_template(rocblas_handle handle,
             }
 
             // d. update level
+            HIP_CHECK(hipEventRecord(merge_events[7], stream));
             ROCSOLVER_LAUNCH_KERNEL((stedc_mergeUpdate_kernel<S>),
                                     dim3(groupsn, groupsn, batch_count), dim3(BS2,BS2), 0, stream, 
                                     levs, blks, k, n, D + shiftD, strideD,
                                     V, 0, ldv, strideV, tmpz, tempgemm);
+            HIP_CHECK(hipEventRecord(merge_events[8], stream));
+
+            HIP_CHECK(hipStreamSynchronize(stream));
+            float merge_elapsed[8];
+
+            for(int i = 0; i < 8; i++)
+                HIP_CHECK(hipEventElapsedTime(&merge_elapsed[i], merge_events[i], merge_events[i+1]));
+            for(int i = 0; i < 9; i++)
+                HIP_CHECK(hipEventDestroy(merge_events[i]));
+
+if(rocsolver_profile_messages)
+{
+            printf("\tmergeSort          : %f\n"
+                   "\tmergeDeflate       : %f\n"
+                   "\tmergeRotate        : %f\n"
+                   "\tmergeValues        : %f\n"
+                   "\tmergeVectors       : %f\n"
+                   "\tmergePrepgemm      : %f\n"
+                   "\tGEMM               : %f\n"
+                   "\tmergeUpdate        : %f\n",
+                merge_elapsed[0], merge_elapsed[1], merge_elapsed[2], merge_elapsed[3], merge_elapsed[4], merge_elapsed[5], merge_elapsed[6], merge_elapsed[7]);
+            fflush(stdout);
+}
+
+if (rocsolver_debug_messages)
+{
 //print_device_matrix(std::cout,"new D",1,n,D,1);
 //print_device_matrix(std::cout,"new V",n,n,V,ldv);
+}
         }
 
         // 4. Final update 
