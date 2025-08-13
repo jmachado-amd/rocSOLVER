@@ -41,7 +41,7 @@
 #include <algorithm>
 
 static bool rocsolver_debug_messages = std::getenv("ROCSOLVER_DEBUG_MESSAGES") != nullptr;
-static bool rocsolver_profile_messages = true; // std::getenv("ROCSOLVER_PROFILE_MESSAGES") != nullptr;
+static bool rocsolver_profile_messages = std::getenv("ROCSOLVER_PROFILE_MESSAGES_OFF") != nullptr ? false : true;
 
 ROCSOLVER_BEGIN_NAMESPACE
 
@@ -981,9 +981,9 @@ ROCSOLVER_KERNEL void stedc_mergePrepgemm_kernel(const rocblas_int levs,
     rocblas_int dm = 1 << k;
     rocblas_int dm2 = dm << 1;
 
-    for(int j = cid; j < n; j += dimc)
+    for(int j = cid; j < n; j += dimc * gridDim.y)
     {
-        for(int i = rid; i < n; i += dimr)
+        for(int i = rid; i < n; i += dimr * gridDim.x)
         {
             // column 'j' belongs to sub-block 'bx' and thus form vector of
             // the new sub-block 'nbx'
@@ -1071,9 +1071,9 @@ ROCSOLVER_KERNEL void
     // updated eigenvectors after merges
     S* vecs = vecsA + bid * 2 * (n * n);
 
-    for(int j = cid; j < n; j += dimc)
+    for(int j = cid; j < n; j += dimc * gridDim.y)
     {
-        for(int i = rid; i < n; i += dimr)
+        for(int i = rid; i < n; i += dimr * gridDim.x)
         {
             if(i == 0)
                 D[j] = evs[j];
@@ -1555,6 +1555,7 @@ if (rocsolver_debug_messages)
                                     levs, blks, k, n, D + shiftD, strideD,
                                     V, 0, ldv, strideV, tmpz, tempgemm);
             HIP_CHECK(hipEventRecord(merge_events[8], stream));
+/* print_device_matrix(std::cout,"V at leaves",n,n,V,ldv); */
 
             HIP_CHECK(hipStreamSynchronize(stream));
             float merge_elapsed[8];
